@@ -21,6 +21,20 @@
 #include <libunwind.h>
 #include <libunwind-ptrace.h>
 
+// DWARF x86 register numbers pilfered from libunwind/src/x86/unwind_i.h
+#define DWARF_X86_EAX     0
+#define DWARF_X86_ECX     1
+#define DWARF_X86_EDX     2
+#define DWARF_X86_EBX     3
+#define DWARF_X86_ESP     4
+#define DWARF_X86_EBP     5
+#define DWARF_X86_ESI     6
+#define DWARF_X86_EDI     7
+#define DWARF_X86_EIP     8
+#define DWARF_X86_EFLAGS  9
+#define DWARF_X86_TRAPNO  10
+#define DWARF_X86_ST0     11
+
 /* This is a pointer-alike type which uses libunwind's memory accessors
  * rather than accessing memory directly. This allows access to a remote
  * process's address space as if it were local. Of course the remote 
@@ -153,34 +167,21 @@ public:
         unw_word_t regval;
         switch(i)
         {
-// DWARF x86 register numbers pilfered from libunwind/src/x86/unwind_i.h
-#define EAX     0
-#define ECX     1
-#define EDX     2
-#define EBX     3
-#define ESP     4
-#define EBP     5
-#define ESI     6
-#define EDI     7
-#define EIP     8
-#define EFLAGS  9
-#define TRAPNO  10
-#define ST0     11
-            case EAX: unw_get_reg(c, UNW_X86_EAX, &regval); break;
-			case EDX: unw_get_reg(c, UNW_X86_EDX, &regval); break;
-			case ECX: unw_get_reg(c, UNW_X86_ECX, &regval); break;
-			case EBX: unw_get_reg(c, UNW_X86_EBX, &regval); break;
-			case ESI: unw_get_reg(c, UNW_X86_ESI, &regval); break;
-            case EDI: unw_get_reg(c, UNW_X86_EDI, &regval); break;
-            case EBP: unw_get_reg(c, UNW_X86_EBP, &regval); 
+            case DWARF_X86_EAX: unw_get_reg(c, UNW_X86_EAX, &regval); break;
+			case DWARF_X86_EDX: unw_get_reg(c, UNW_X86_EDX, &regval); break;
+			case DWARF_X86_ECX: unw_get_reg(c, UNW_X86_ECX, &regval); break;
+			case DWARF_X86_EBX: unw_get_reg(c, UNW_X86_EBX, &regval); break;
+			case DWARF_X86_ESI: unw_get_reg(c, UNW_X86_ESI, &regval); break;
+            case DWARF_X86_EDI: unw_get_reg(c, UNW_X86_EDI, &regval); break;
+            case DWARF_X86_EBP: unw_get_reg(c, UNW_X86_EBP, &regval); 
                 std::cerr << "read EBP as 0x" << std::hex << regval << std::endl;
                 break;
-            case ESP: unw_get_reg(c, UNW_X86_ESP, &regval); 
+            case DWARF_X86_ESP: unw_get_reg(c, UNW_X86_ESP, &regval); 
                 std::cerr << "read ESP as 0x" << std::hex << regval << std::endl;                    
                 break;
-            case EIP: unw_get_reg(c, UNW_X86_EIP, &regval); break;
-            case EFLAGS: unw_get_reg(c, UNW_X86_EFLAGS, &regval); break;
-            case TRAPNO: unw_get_reg(c, UNW_X86_TRAPNO, &regval); break;
+            case DWARF_X86_EIP: unw_get_reg(c, UNW_X86_EIP, &regval); break;
+            case DWARF_X86_EFLAGS: unw_get_reg(c, UNW_X86_EFLAGS, &regval); break;
+            case DWARF_X86_TRAPNO: unw_get_reg(c, UNW_X86_TRAPNO, &regval); break;
             default:
                 throw dwarf::lib::Not_supported("unsupported register number");
         }
@@ -188,20 +189,6 @@ public:
     }
     libunwind_regs(unw_cursor_t *c) : c(c) {}
 };
-#undef EAX 
-#undef ECX 
-#undef EDX 
-#undef EBX 
-#undef ESP 
-#undef EBP 
-#undef ESI 
-#undef EDI 
-#undef EIP 
-#undef EFLAGS 
-#undef TRAPNO 
-#undef ST0 
-        
-
         
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */
@@ -217,6 +204,8 @@ struct process_image
      * actual process map. */
     typedef unw_word_t addr_t;
 	typedef std::pair<addr_t, addr_t> entry_key;
+    
+    static const char *ANONYMOUS_REGION_FILENAME;
 
     struct entry
     {
@@ -231,7 +220,8 @@ struct process_image
 	    UNKNOWN,
         STACK,
         HEAP,
-        STATIC
+        STATIC,
+        ANON
     };
 	static const char *name_for_memory_kind(/*memory_kind*/ int k); // relaxation for ltrace++
     
@@ -239,13 +229,20 @@ struct process_image
     {
     	boost::shared_ptr<std::ifstream> p_if;
         boost::shared_ptr<dwarf::lib::file> p_df;
-        boost::shared_ptr<dwarf::lib::dieset> p_ds;
+        boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds;
     };
     
 	std::map<entry_key, entry> objects;
-    std::map<entry_key, entry>::iterator objects_iterator;
+    typedef std::map<entry_key, entry>::iterator objects_iterator;
     std::map<std::string, file_entry> files;
     typedef std::map<std::string, file_entry>::iterator files_iterator;
+    
+    /* For each registered file that is an [anon] segment, we record its
+     * DWARF address separately. This is because addresses are process-relative
+     * in DwarfPython diesets. */
+    std::map<addr_t, addr_t> anon_segments_dwarf_bases;
+    // FIXME: we currently ignore the .second of these pairs -- just using it
+    // to track the known anonymous mappings
     
     /* Problem: all addresses could have i_file be the executable;
      * do we want to support i_file being libraries too? Do we want
@@ -302,6 +299,9 @@ public:
     memory_kind discover_object_memory_kind(addr_t addr);
     addr_t get_dieset_base(dwarf::lib::abstract_dieset& ds);
     addr_t get_library_base(const std::string& path);
+    void register_anon_segment_description(addr_t base, 
+        boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds,
+        addr_t base_for_dwarf_info);
 
 	typedef dwarf::spec::with_runtime_location_die::sym_binding_t sym_binding_t;
     sym_binding_t resolve_symbol(files_iterator file, const std::string& sym);
@@ -319,6 +319,7 @@ public:
     boost::shared_ptr<dwarf::spec::basic_die> find_first_matching(
         bool(*pred)(boost::shared_ptr<dwarf::spec::basic_die>, void *pred_arg), void *pred_arg);
     
+	objects_iterator find_object_for_ip(unw_word_t ip);
     files_iterator find_file_for_ip(unw_word_t ip);
     boost::shared_ptr<dwarf::spec::compile_unit_die> find_compile_unit_for_ip(unw_word_t ip);    
     boost::shared_ptr<dwarf::spec::subprogram_die> find_subprogram_for_ip(unw_word_t ip);    
@@ -332,17 +333,20 @@ private:
     void update_i_executable();
     void update_executable_elf();
 public:
+	void register_range_as_dieset(addr_t begin, addr_t end, 
+    	boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds);
+
 	addr_t get_object_from_die(boost::shared_ptr<dwarf::spec::with_runtime_location_die> d,
 		dwarf::lib::Dwarf_Addr vaddr);
     boost::shared_ptr<dwarf::spec::basic_die> discover_object_descr(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type
          = boost::shared_ptr<dwarf::spec::type_die>(),
         addr_t *out_object_start_addr = 0);
-    boost::shared_ptr<dwarf::spec::basic_die> discover_stack_object(addr_t addr,
+    boost::shared_ptr<dwarf::spec::with_stack_location_die> discover_stack_object(addr_t addr,
         addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::basic_die> discover_stack_object_local(
+    boost::shared_ptr<dwarf::spec::with_stack_location_die> discover_stack_object_local(
     	addr_t addr, addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::basic_die> discover_stack_object_remote(
+    boost::shared_ptr<dwarf::spec::with_stack_location_die> discover_stack_object_remote(
     	addr_t addr, addr_t *out_object_start_addr);
         
     boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object(addr_t addr,
@@ -385,7 +389,7 @@ struct stack_object_discovery_handler_arg
 	// in
 	process_image::addr_t addr;
     // out
-    boost::shared_ptr<dwarf::spec::basic_die> discovered_die;
+    boost::shared_ptr<dwarf::spec::with_stack_location_die> discovered_die;
     process_image::addr_t object_start_addr;
 };        
 

@@ -10,4 +10,4 @@ clean:
 
 .PHONY: lib
 lib: src
-	cd lib && ln -sf ../src/libprocessimage.so .
+	test -L lib/libprocessimage.so || (mkdir -p lib && cd lib && ln -sf ../src/libprocessimage.so .)

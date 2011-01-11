@@ -12,6 +12,12 @@ typedef struct __cake_alloc alloc;
 
 extern alloc *ALLOC_LIST_HEAD;
 extern unsigned long recs_allocated;
+extern int ready; /* ready to call into libprocessimage. */
 
 /* debugging */
 void print_head_alloc(void);
+
+/* dynamic points-to debugging */
+void print_guessed_region_type(void *img, void *begin, size_t size, const void *caller);
+
+void *get_self_image(void);

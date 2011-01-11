@@ -1,0 +1,6 @@
+syntax: regexp
+.*\.o$
+.*\.d$
+.*\.a$
+.*\.so$
+(^|/)makefile$

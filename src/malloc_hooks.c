@@ -61,7 +61,7 @@ void print_head_alloc(void)
 }
 
 static void
-add_region_rec(void *begin, size_t size)
+add_region_rec(void *begin, size_t size, const void *caller)
 {
 	struct __cake_alloc *new_cake_alloc = malloc(sizeof(new_cake_alloc));
     new_cake_alloc->begin = begin;
@@ -71,6 +71,7 @@ add_region_rec(void *begin, size_t size)
     __cake_alloc_list_head = new_cake_alloc;
     recs_allocated++;
     average_alloc_size = (average_alloc_size * (recs_allocated - 1) + size) / recs_allocated;
+    if (ready) print_guessed_region_type(get_self_image(), begin, size, caller);
 }
 
 static void *
@@ -85,7 +86,7 @@ my_malloc_hook (size_t size, const void *caller)
     /* Call recursively */
     /*printf ("calling malloc (%u)\n", (unsigned int) size);*/
     result = malloc (size);
-    if (result) add_region_rec(result, size);
+    if (result) add_region_rec(result, size, caller);
     /* Save underlying hooks */
     old_malloc_hook = __malloc_hook;
     old_free_hook = __free_hook;
@@ -198,7 +199,7 @@ my_realloc_hook(void *ptr, size_t size, const void *caller)
     /* Call recursively */
     result = realloc(ptr, size);
     if (ptr != NULL) delete_region_rec_for(ptr);
-    if (result != NULL) add_region_rec(result, size);
+    if (result != NULL) add_region_rec(result, size, caller);
     /* Save underlying hooks */
     old_malloc_hook = __malloc_hook;
     old_free_hook = __free_hook;

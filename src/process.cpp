@@ -86,6 +86,11 @@ bool process_image::rebuild_map()
                                 files[seg_descr].p_ds = boost::make_shared<lib::dieset>(
                         	        *files[seg_descr].p_df);
                     	    }
+                            catch (dwarf::lib::Error)
+                            {
+                        	    files[seg_descr].p_df = boost::shared_ptr<lib::file>();
+                                files[seg_descr].p_ds = boost::shared_ptr<lib::dieset>();
+                            }
                             catch (dwarf::lib::No_entry)
                             {
                         	    files[seg_descr].p_df = boost::shared_ptr<lib::file>();
@@ -111,7 +116,10 @@ void process_image::update_i_executable()
 {
     /* FIXME: if a mapping goes away, we remove its entry but leave its 
      * file open. This does no harm, but would be nice to delete it. */
-    	/* We should have the executable open already -- find it. */
+    /* FIXME: we don't clear up anonymous mappings either, so if they get
+     * munmap()'ed and then something else mapped at the same address, we
+     * will get erroneous data. */
+    /* We should have the executable open already -- find it. */
     std::ostringstream filename;
     filename << "/proc/" << m_pid << "/exe";
     //char link_target[PATH_MAX];
@@ -175,9 +183,11 @@ boost::shared_ptr<spec::basic_die> resolve_first(
         for (auto i_result = results.begin(); i_result != results.end(); i_result++)
         {
         	assert(*i_result); // result should not be null ptr
+			std::cerr << "Considering result " << **i_result << std::endl;
         	if (!pred || pred(**i_result)) return *i_result;
 		}
     }
+	return boost::shared_ptr<spec::basic_die>();
 }
 
 boost::shared_ptr<dwarf::spec::basic_die> 
@@ -216,9 +226,19 @@ process_image::addr_t process_image::get_dieset_base(dwarf::lib::abstract_dieset
 		std::cerr << "Warning: failed to find library for some dieset..." << std::endl;
     	return 0; // give up
     }
+    /* If it's the executable dieset or the dieset for an anonymous mapped 
+     * region, the base address is zero. In the latter case, the search will
+     * have found an anonymous region. */
+    if (found == i_executable) return 0;
+    if (found->first == ANONYMOUS_REGION_FILENAME)
+    {
+    	return 0; // success
+    }
 
 	return get_library_base(found->first.c_str());
 }
+
+const char *process_image::ANONYMOUS_REGION_FILENAME = /*"[anon]"*/ "";
 
 struct callback_in_out
 {
@@ -489,15 +509,30 @@ process_image::memory_kind process_image::discover_object_memory_kind(addr_t add
                     }
                     else if (strcmp(seg_descr, "[anon]") == 0)
                     {
-                        // hmm... anon segments might be alloc'd specially...
-                        // ... but it's probably "closest" to report them as heap
-                        ret = HEAP; break;
-				    }
-                    else { ret = UNKNOWN; break; }
+                case '\0': /* same treatment for nameless segments */
+                        // hmm... if we *know* the anon segment, return it as 
+                        // ANON; otherwise return it as heap
+                        if (anon_segments_dwarf_bases.find(i_obj->first.first) 
+                         != anon_segments_dwarf_bases.end())
+                        {
+                            ret = ANON; break;
+                        }
+                        else
+                        {
+                            ret = HEAP; break;
+                        }
+                    }
+                    else 
+                    {
+                    	std::cerr << "Warning: did not understand segment description " 
+                         << seg_descr
+                         << " at address " << (void*)begin
+                         << " in memory map of process " << ((m_pid == -1) ? getpid() : m_pid)
+                         << std::endl;
+                    	ret = UNKNOWN; break; 
+                    }
                     //break;
                 case '/': ret = STATIC; break;
-                    //break;
-                case '\0': ret = HEAP; break; // treat nameless segments as heap too
                     //break;
                 default: ret = UNKNOWN; break;
                     //break;
@@ -505,7 +540,33 @@ process_image::memory_kind process_image::discover_object_memory_kind(addr_t add
         }
     }
 	return ret;
-}    
+}
+    
+void process_image::register_anon_segment_description(addr_t base, 
+        boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds,
+        addr_t base_for_dwarf_info)
+{
+	assert(p_ds);
+    this->update();
+	// update any existing mapping
+    anon_segments_dwarf_bases[base] = base_for_dwarf_info;
+    // create file record if none exists
+    if (files.find(ANONYMOUS_REGION_FILENAME) == files.end())
+    {
+        // FIXME: supports only one anonymous region, for now
+        files.insert(std::make_pair(
+            std::string(ANONYMOUS_REGION_FILENAME),
+            (file_entry) { boost::shared_ptr<std::ifstream>(),
+                            boost::shared_ptr<dwarf::lib::file>(),
+                            p_ds }
+        ));
+    }
+    else
+    {
+    	// we should not have added more than one file named [anon]
+        assert(files[std::string(ANONYMOUS_REGION_FILENAME)].p_ds == p_ds);
+    }
+}
 
 /* Clearly one of these will delegate to the other. 
  * Which way round do they go? Clearly, discover_object_descr must first
@@ -531,17 +592,24 @@ process_image::discover_object_descr(addr_t addr,
     {
     	switch(discover_object_memory_kind(addr))
         {
+        	case ANON:
         	case STATIC:
             	std::cerr << 
                 	"Warning: static object DIE search failed for static object at 0x" 
                     << addr << std::endl;
-            case STACK:
-            	return discover_stack_object(addr, out_object_start_addr);
+            case STACK: {
+            	auto discovered_obj = discover_stack_object(addr, out_object_start_addr);
+				if (discovered_obj && discovered_obj->get_type()) 
+				{
+					return *discovered_obj->get_type();
+				}
+				else return boost::shared_ptr<spec::basic_die>();
+			}
             case HEAP:
             	return discover_heap_object(addr, imprecise_static_type, out_object_start_addr);
             default:
             case UNKNOWN:
-            	std::cerr << "Warning: unknown kind of memory at 0x" << addr << std::endl;
+            	std::cerr << "Warning: unknown kind of memory at 0x" << std::hex << addr << std::dec << std::endl;
             	return boost::shared_ptr<spec::basic_die>();
         }
     }
@@ -586,12 +654,12 @@ process_image::discover_heap_object(addr_t addr,
     boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
     addr_t *out_object_start_addr)
 {
-	assert(false);
+	/*assert(false);*/
 	return boost::shared_ptr<dwarf::spec::basic_die>();
 }
 
 //void *
-boost::shared_ptr<dwarf::spec::basic_die>
+boost::shared_ptr<dwarf::spec::with_stack_location_die>
 process_image::discover_stack_object(addr_t addr, addr_t *out_object_start_addr/*,
 	unw_word_t top_frame_sp, unw_word_t top_frame_ip, unw_word_t top_frame_retaddr,
     const char *top_frame_fn_name*/)
@@ -608,11 +676,11 @@ process_image::discover_stack_object(addr_t addr, addr_t *out_object_start_addr/
     }
 }
 
-boost::shared_ptr<dwarf::spec::basic_die>
+boost::shared_ptr<dwarf::spec::with_stack_location_die>
 process_image::discover_stack_object_local(addr_t addr, addr_t *out_object_start_addr)
 {
 	stack_object_discovery_handler_arg arg
-     = {addr, boost::shared_ptr<dwarf::spec::basic_die>(), 0};
+     = {addr, boost::shared_ptr<dwarf::spec::with_stack_location_die>(), 0};
 	walk_stack(NULL, stack_object_discovery_handler, &arg);
     // forward output argument
     if (out_object_start_addr) *out_object_start_addr = arg.object_start_addr;
@@ -881,6 +949,21 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 //     &&  boost::dynamic_pointer_cast<spec::subprogram_die>(p_d)->get_high_pc()
 // }
 
+process_image::objects_iterator 
+process_image::find_object_for_ip(unw_word_t ip)
+{
+    for (auto i_entry = this->objects.begin(); i_entry != this->objects.end(); i_entry++)
+    {
+    	/* Test whether this IP is within this library's mapped regions. */
+        if (ip >= i_entry->first.first
+            && ip < i_entry->first.second)
+        {
+        	return i_entry;
+        }
+    }
+	return objects.end();
+}
+
 process_image::files_iterator 
 process_image::find_file_for_ip(unw_word_t ip)
 {
@@ -900,29 +983,27 @@ process_image::find_file_for_ip(unw_word_t ip)
 //         	<< " is under symbol: " << fn_name << std::endl;
 // 	}
 
-    for (auto i_entry = this->objects.begin(); i_entry != this->objects.end(); i_entry++)
+    auto i_entry = find_object_for_ip(ip);
+    if (i_entry == objects.end()) return files.end();
+
+    auto found = this->files.find(i_entry->second.seg_descr);
+    if (found != this->files.end())
     {
-    	/* Test whether this IP is within this library's mapped regions. */
-        if (ip >= i_entry->first.first
-            && ip < i_entry->first.second)
-        {
-            auto found = this->files.find(i_entry->second.seg_descr);
-            assert(found != this->files.end());
-        	std::cerr << "Found that address 0x" << std::hex << ip
-            	<< " is in image of file " << found->first << std::endl;
-            return found;
-        }
+        std::cerr << "Found that address 0x" << std::hex << ip
+            << " is in image of file \"" << found->first << "\"" << std::endl;
+        return found;
     }
-    
-// 	for (process_image::files_iterator i_file = this->files.begin(); 
-//     	i_file != this->files.end(); i_file++)
-//     {
-//     	if (i_file->second.p_ds)
-//         {
-// 
-//         }
-//     }
-    return files.end();
+    else
+    {
+        /* FIXME: this occurs when there is an entry in objects
+         * but no corresponding entry in files. Find out why this
+         * might happen. Seems to be for seg_descr
+         * like "/usr/lib/gconv/gconv-modules.cache\000..."*/
+        std::cerr << "Warning: object at " << (void*) i_entry->first.first
+         << " (description: '" << i_entry->second.seg_descr << "') "
+         << " has no entry in files map" << std::endl;
+        return files.end();
+    }
 }
 
 
@@ -967,7 +1048,7 @@ process_image::find_compile_unit_for_ip(unw_word_t ip)
 	process_image::files_iterator found_file = find_file_for_ip(ip);
     if (found_file != this->files.end())
     {
-    	unsigned ip_offset_within_dieset = ip -get_dieset_base(*found_file->second.p_ds);
+    	unsigned ip_offset_within_dieset = ip - get_dieset_base(*found_file->second.p_ds);
         boost::shared_ptr<spec::basic_die> found_deeper = found_file->second.p_ds->toplevel();
         while (found_deeper)
         {
@@ -1339,10 +1420,10 @@ process_image::find_most_specific_die_for_addr(unw_word_t addr)
 //          * This isn't much good though. */
 //     }
 //     
-boost::shared_ptr<dwarf::spec::basic_die>
+boost::shared_ptr<dwarf::spec::with_stack_location_die>
 process_image::discover_stack_object_remote(addr_t addr, addr_t *out_object_start_addr)
 {
-	return boost::shared_ptr<dwarf::spec::basic_die>();
+	return boost::shared_ptr<dwarf::spec::with_stack_location_die>();
 }
 
 
@@ -1353,6 +1434,7 @@ const char *process_image::name_for_memory_kind(int k) // relaxation for ltrace+
         case STACK: return "stack";
         case STATIC: return "static";
         case HEAP: return "heap";
+        case ANON: return "anon";
     	case UNKNOWN: 
         default: return "unknown";
 	}    
