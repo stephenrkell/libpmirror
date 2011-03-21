@@ -1,0 +1,50 @@
+Things to make fast in libprocessimage:
+
+static object discovery (address -> name mapping)
+- use a clever data structure for overlapping rangesets?
+- identify object by a simple LUT? assume objects are at least 4kb in size
+=> require 1M entries for a 4GB address space
+=> "mapped only" optimisation: still might require essentially this much
+=> linear-page-table-like trick: mmap a 4MB region, will be lazily allocated
+- still have to worry about the in-dieset search, so perhaps
+... just find a quick-ish solution to the rangesets problem
+--- perhaps a tree with high branching factor--- feed it hex digits from the queried address?
+--- or: each level in the tree is one partition of the address space?
+--- i.e.
+---                                    [ toplevel ]
+---  ---  ---' ---/ --/ -/ / / / / / / / | | | | | \ \ \ \ \ \ \--
+--- [cu]  [cu] [cu] ...
+--- but degrades to binary search within each tree level 
+--- thousands of compilation units seems like the biggest realistic, however
+
+name-address mapping: not officially the job of libprocessimage, BUT
+- might want to cache addresses calculated in the construction of the above tree
+- use the factory approach: client passes a factory whose CU (etc.) impls cache their addresses
+- can we guarantee that these won't be destroyed/recreated through smart pointers?
+- perhaps if we do the caching in the dieset
+- it remains, implicitly, the client programmer's job to ensure that 
+... not so much caching is done that the benefits of smart_ptr reclamation are lost
+
+stack object discovery
+- use fast unwinding patch
+
+heap object discovery
+- making this fast is FUTURE WORK -- can discount heap allocation costs for now
+- use alloc-site heap metadata (suffices for discover(alloc'd-address))
+- create introspection-enabled allocator (necessary for other cases)
+- prototype: use linear programming for alloc-site-to-DWARF mapping (fast enough)
+- production: use binary analysis for alloc-site-to-DWARF mapping (even faster)
+
+
+Features to add to libprocessimage:
+
+per-dieset object discovery handler for unions, void pointers, etc.
+
+breakpoints / djprobes
+
+notify on stack frame return (more portably than Amitabha's code?)
+
+
+Refactoring to do:
+
+isolate sysdeps 

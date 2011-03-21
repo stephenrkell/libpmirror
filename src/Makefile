@@ -21,7 +21,7 @@ $(C_DEPS): .%.d : %.c
 include $(DEPS)
 
 libprocessimage.so: process.o malloc_hooks.o self-image.o
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -Wl,--whole-archive -ldwarf -Wl,--no-whole-archive -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-x86 -lunwind-ptrace
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl #-ldwarf 
 
 clean:
 	rm -f *.o *.so

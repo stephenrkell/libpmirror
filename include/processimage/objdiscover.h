@@ -1,3 +1,6 @@
+#ifndef LIBPROCESSIMAGE_OBJDISCOVER_H_
+#define LIBPROCESSIMAGE_OBJDISCOVER_H_
+
 struct __cake_alloc
 {
     void *begin;
@@ -21,3 +24,5 @@ void print_head_alloc(void);
 void print_guessed_region_type(void *img, void *begin, size_t size, const void *caller);
 
 void *get_self_image(void);
+
+#endif

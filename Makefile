@@ -7,6 +7,8 @@ src:
 .PHONY: clean
 clean:
 	$(MAKE) -C src clean
+	rm -f lib/libprocessimage.so 
+
 
 .PHONY: lib
 lib: src

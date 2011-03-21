@@ -39,12 +39,12 @@ void print_guessed_region_type(void *img, void *begin, size_t size, const void *
 		fprintf(stderr, "Not guessing a type for allocation site %p -- no debug info.\n", caller);
 		return;
 	}
-	fprintf(stderr, "malloc() from %p, size %d...\n", caller, size);
+	fprintf(stderr, "malloc() from %p, size %zu...\n", caller, size);
 	/* First just collapse all the byte- and word-sized types into a single message. */
-	fprintf(stderr, "... might be block of %d instance(s) of a bytesize type.\n", size);
+	fprintf(stderr, "... might be block of %zu instance(s) of a bytesize type.\n", size);
 	if (size % sizeof(int) == 0) 
 	{
-		fprintf(stderr, "... might be block of %d instance(s) of a wordsize type.\n", size/sizeof(int));
+		fprintf(stderr, "... might be block of %zu instance(s) of a wordsize type.\n", size/sizeof(int));
 	}
 	
 	/* For each descendent that is a data type... */
