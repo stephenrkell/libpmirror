@@ -1873,7 +1873,16 @@ void process_image::write_type_containment_relation(
 	using dwarf::spec::type_die;
 	using dwarf::spec::member_die;
 
-	// DEBUG
+	// DEBUG: 
+	// HACK: find this dieset in the files table
+	boost::optional<std::string> ds_filename;
+	for (auto i_file = files.begin(); i_file != files.end(); i_file++)
+	{
+		if (i_file->second.p_ds.get() == &ds) { ds_filename = i_file->first; break; }
+	}
+	assert(ds_filename);
+	std::cerr << "Building type containment relation (NOT REALLY!) for dieset "
+		<< *ds_filename;
 	std::cerr << '\n';
 	int count = 0;
 

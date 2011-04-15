@@ -451,7 +451,7 @@ private:
 	virtual bool type_equivalence(boost::shared_ptr<dwarf::spec::type_die> t1,
 		boost::shared_ptr<dwarf::spec::type_die> t2);
 	
-	static void write_type_containment_relation(
+	void write_type_containment_relation(
 		std::multimap<lib::Dwarf_Off, lib::Dwarf_Off>& out_mm,
 		spec::abstract_dieset& ds);
 public:

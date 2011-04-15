@@ -42,7 +42,13 @@ double average_alloc_size;
 
 /* What's the largest region that mmap will let us map? 
  * Experiments on my x86_64 machine make this 2^46 bytes. YMMV. */
-#define BIGGEST_MMAP_ALLOWED 1UL<<46
+#if defined (X86_64) || (defined (__x86_64__))
+#define BIGGEST_MMAP_ALLOWED (1ULL<<46)
+#else
+#define BIGGEST_MMAP_ALLOWED (1ULL<<(((sizeof (void*))<<3)-2))
+#warning "Guessing the maximum mmap() size for this architecture"
+// go with 1/4 of the address space if we're not sure (x86-64 is special)
+#endif
 
 static void
 init_bins_region(void)
@@ -71,7 +77,7 @@ init_bins_region(void)
 		fprintf(stderr, "%s: warning: mapping %ld bytes not %ld\n",
 			__FILE__, BIGGEST_MMAP_ALLOWED, mapping_size);
 		fprintf(stderr, "%s: warning: only bottom 1/%lld of address space is tracked.\n",
-			__FILE__, (long long) ((long long) mapping_size / (long long) BIGGEST_MMAP_ALLOWED));
+			__FILE__, mapping_size / BIGGEST_MMAP_ALLOWED);
 		mapping_size = BIGGEST_MMAP_ALLOWED;
 		bins_max_address = (void*) ((BIGGEST_MMAP_ALLOWED << POINTER_SHIFT_BITS)-1);
 	}
