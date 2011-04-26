@@ -1893,7 +1893,9 @@ void process_image::write_type_containment_relation(
 			i_node != ds.end();
 			i_node++)
 	{
-		std::cerr << '\r' << ++count;
+		++count;
+		if (count % 100 == 0) std::cerr << '\r' << count;
+		//std::cerr << '\r' << ++count;
 // 		if (dynamic_pointer_cast<type_die>(*i_node)
 // 		&&  dynamic_pointer_cast<type_die>(*i_node)->get_concrete_type()
 // 		&&  dynamic_pointer_cast<type_die>(*i_node)->get_concrete_type()->get_offset()
