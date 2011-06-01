@@ -1,13 +1,16 @@
+MALLOC_HOOKS ?= $(HOME)/work/devel/malloc-hooks
+
 CFLAGS += -I../include/processimage
-CFLAGS += -std=c99 -fPIC -g
+CFLAGS += -I$(MALLOC_HOOKS)
+CFLAGS += -std=gnu99 -fPIC -g -O0 # need gnu99 for Linux-specific mmap() flags
 CXXFLAGS += -I../include/processimage
 CXXFLAGS += -I${HOME}/scratch/opt/include
 CXXFLAGS += -std=c++0x -fPIC -g -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
 
-default: libprocessimage.so
+default: libprocessimage.so libheap_index_hooks.so libheap_index_fast_hooks.so
 
 CPP_SRC := process.cpp
-C_SRC := malloc_hooks.c
+#C_SRC := malloc_hooks.c
 
 CPP_DEPS := $(patsubst %.cpp,.%.d,$(CPP_SRC))
 C_DEPS := $(patsubst %.c,.%.d,$(C_SRC))
@@ -20,8 +23,14 @@ $(C_DEPS): .%.d : %.c
 
 include $(DEPS)
 
-libprocessimage.so: process.o malloc_hooks.o self-image.o
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl #-ldwarf 
+libprocessimage.so: process.o self-image.o
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) -lheap_index_fast_hooks #-ldwarf 
+
+libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c memtable.h
+	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
+
+libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c memtable.h
+	gcc $(LDFLAGS) -shared -pg -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) "$<"
 
 clean:
 	rm -f *.o *.so

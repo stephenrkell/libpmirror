@@ -34,7 +34,8 @@ void (*__malloc_initialize_hook) (void) = my_init_hook;
  * discover the extents of an issued block, given a pointer to some
  * arbitrary location in the block, without extra metadata. */
 
-struct __cake_alloc *__cake_alloc_list_head;
+//struct __cake_alloc *__cake_alloc_list_head;
+
 void **bins_region;
 void *bins_max_address;
 unsigned long recs_allocated;
@@ -74,7 +75,7 @@ init_bins_region(void)
 	if (mapping_size > BIGGEST_MMAP_ALLOWED)
 	{
 	
-		fprintf(stderr, "%s: warning: mapping %ld bytes not %ld\n",
+		fprintf(stderr, "%s: warning: mapping %lld bytes not %ld\n",
 			__FILE__, BIGGEST_MMAP_ALLOWED, mapping_size);
 		fprintf(stderr, "%s: warning: only bottom 1/%lld of address space is tracked.\n",
 			__FILE__, mapping_size / BIGGEST_MMAP_ALLOWED);
@@ -113,12 +114,12 @@ my_init_hook (void)
 	init_bins_region();
 }
 
-void print_head_alloc(void)
-{
-	fprintf(stderr, "Head alloc is at %p, has begin %p, size %zu bytes, next %p\n",
-            __cake_alloc_list_head, __cake_alloc_list_head->begin,
-            __cake_alloc_list_head->size, __cake_alloc_list_head->next);
-}
+// void print_head_alloc(void)
+// {
+// 	fprintf(stderr, "Head alloc is at %p, has begin %p, size %zu bytes, next %p\n",
+//             __cake_alloc_list_head, __cake_alloc_list_head->begin,
+//             __cake_alloc_list_head->size, __cake_alloc_list_head->next);
+// }
 
 #if 0
 #define SIZE_MASK = ((sizeof(void*)) - 1)
@@ -178,8 +179,8 @@ static void **bin_for_addr(void *addr)
 }
 
 /* forward decl */
-static void
-add_region_rec(void *begin, size_t size, const void *caller);
+//static void
+//add_region_rec(void *begin, size_t size, const void *caller);
 
 static void 
 add_bin_entry(void *begin, size_t modified_size, const void *caller)
@@ -215,19 +216,19 @@ post_successful_alloc(void *begin, size_t modified_size, const void *caller)
 {
 	add_bin_entry(begin, modified_size, caller);
 }
-static void
-add_region_rec(void *begin, size_t size, const void *caller)
-{
-	struct __cake_alloc *new_cake_alloc = malloc(sizeof(new_cake_alloc));
-    new_cake_alloc->begin = begin;
-    new_cake_alloc->size = size;
-    // FIXME: locking
-    new_cake_alloc->next = __cake_alloc_list_head;
-    __cake_alloc_list_head = new_cake_alloc;
-    recs_allocated++;
-    average_alloc_size = (average_alloc_size * (recs_allocated - 1) + size) / recs_allocated;
-    if (ready) print_guessed_region_type(get_self_image(), begin, size, caller);
-}
+// static void
+// add_region_rec(void *begin, size_t size, const void *caller)
+// {
+// 	struct __cake_alloc *new_cake_alloc = malloc(sizeof(new_cake_alloc));
+//     new_cake_alloc->begin = begin;
+//     new_cake_alloc->size = size;
+//     // FIXME: locking
+//     new_cake_alloc->next = __cake_alloc_list_head;
+//     __cake_alloc_list_head = new_cake_alloc;
+//     recs_allocated++;
+//     average_alloc_size = (average_alloc_size * (recs_allocated - 1) + size) / recs_allocated;
+//     if (ready) print_guessed_region_type(get_self_image(), begin, size, caller);
+// }
 
 static void pre_alloc(size_t *p_size, const void *caller)
 {
@@ -341,44 +342,44 @@ static void pre_nonnull_free(void *ptr, size_t freed_usable_size)
 }
 
 /* forward decl */
-static void delete_region_rec_for(void *ptr);
+//static void delete_region_rec_for(void *ptr);
 
 static void post_nonnull_free(void *ptr)
 {
 	/* delete_region_rec_for(ptr); */
 }
-static void delete_region_rec_for(void *ptr)
-{
-/*    if (__cake_alloc_list_head->begin == ptr)
-    {
-    	void *old = __cake_alloc_list_head;
-        __cake_alloc_list_head = __cake_alloc_list_head->next;
-        free_func(old);   
-    }    
-    else
-    {*/
-	    int found = 0;
-	    size_t saved_size;
-        struct __cake_alloc *prev_node = NULL;
-        for (struct __cake_alloc *n = __cake_alloc_list_head;
-            	    n != NULL;
-                    prev_node = n, n = n->next)
-        {
-            if (n->begin == ptr)
-            {
-        	    found = 1;
-                if (prev_node != NULL) prev_node->next = n->next;
-                else __cake_alloc_list_head = n->next;
-                saved_size = n->size;
-                free(n);
-                break;   
-            }
-        }
-	    assert(found);
-	    average_alloc_size = (average_alloc_size * recs_allocated - saved_size) / (recs_allocated - 1);
-        recs_allocated--;
-/*    }*/
-}
+// static void delete_region_rec_for(void *ptr)
+// {
+// /*    if (__cake_alloc_list_head->begin == ptr)
+//     {
+//     	void *old = __cake_alloc_list_head;
+//         __cake_alloc_list_head = __cake_alloc_list_head->next;
+//         free_func(old);   
+//     }    
+//     else
+//     {*/
+// 	    int found = 0;
+// 	    size_t saved_size;
+//         struct __cake_alloc *prev_node = NULL;
+//         for (struct __cake_alloc *n = __cake_alloc_list_head;
+//             	    n != NULL;
+//                     prev_node = n, n = n->next)
+//         {
+//             if (n->begin == ptr)
+//             {
+//         	    found = 1;
+//                 if (prev_node != NULL) prev_node->next = n->next;
+//                 else __cake_alloc_list_head = n->next;
+//                 saved_size = n->size;
+//                 free(n);
+//                 break;   
+//             }
+//         }
+// 	    assert(found);
+// 	    average_alloc_size = (average_alloc_size * recs_allocated - saved_size) / (recs_allocated - 1);
+//         recs_allocated--;
+// /*    }*/
+// }
 
 static void
 my_free_hook (void *ptr, const void *caller)
