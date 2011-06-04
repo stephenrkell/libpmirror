@@ -8,8 +8,8 @@ LDLIBS  += -ldwarfpp
 LDLIBS  += -lc++fileno 
 LDLIBS  += -lsrk31c++
 LDLIBS  += -ldwarf 
-LDLIBS  += -lelf -lsupc++ -liberty -lboost_regex
-LDLIBS  += -lunwind -lunwind-ptrace -lunwind-x86 
+LDLIBS  += -lelf -lsupc++ -lboost_regex
+LDLIBS  += -lunwind -lunwind-ptrace -lunwind-$(shell arch)
 LDLIBS  += -ldl
 
 SRC := $(wildcard *.cpp)

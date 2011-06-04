@@ -30,7 +30,7 @@ libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c memtab
 	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
 
 libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c memtable.h
-	gcc $(LDFLAGS) -shared -pg -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) "$<"
+	gcc $(LDFLAGS) -shared -pg -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) $(CFLAGS) "$<"
 
 clean:
 	rm -f *.o *.so

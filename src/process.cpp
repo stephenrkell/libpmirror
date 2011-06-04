@@ -379,7 +379,10 @@ void process_image::update_rdbg()
 				)) == alloc_list_lib_basename)
 		{
 			//auto resolved = resolve_symbol(alloc_list_symname, &i_file);
-			auto resolved = resolve_symbol_from_process_image(alloc_list_symname, &i_file);
+			auto args = std::make_pair(
+				this,
+				i_file);
+			auto resolved = resolve_symbol_from_process_image(alloc_list_symname, &args);
 			if (resolved.file_relative_start_addr != 0 && resolved.size != 0)
 			{
 				/* success! */
@@ -423,141 +426,90 @@ process_image::addr_t process_image::get_library_base_remote(const std::string& 
     return 0;
 }
 
-struct symbols_iteration_state
+process_image::symbols_iteration_state::symbols_iteration_state
+(const process_image::files_iterator& i)
 {
-	Elf *elf;
-	Elf_Scn *scn;
-	GElf_Sym *firstsym;
-	GElf_Sym *lastsym;
-	
-	symbols_iteration_state(const process_image::files_iterator& i)
+    /* process_image::files_iterator *p_file_iterator
+     = reinterpret_cast<process_image::files_iterator *>(p_file_iterator_void);
+	(*p_file_iterator)->second.p_df->get_elf(&elf);*/
+
+	i->second.p_df->get_elf(&elf);
+
+	// code gratefully stolen from Sun libelf docs
+	scn = 0;
+	int number = 0;
+	while ((scn = elf_nextscn(elf, scn)) != 0) 
 	{
-		Elf *elf;
-    	process_image::files_iterator *p_file_iterator
-    	 = reinterpret_cast<process_image::files_iterator *>(p_file_iterator_void);
-		(*p_file_iterator)->second.p_df->get_elf(&elf);
-    	// code gratefully stolen from Sun libelf docs
-    	Elf_Scn* scn = 0;
-    	int number = 0;
-    	while ((scn = elf_nextscn(elf, scn)) != 0) 
-    	{
-        	char *name = 0;
-        	GElf_Shdr *shdr;
-        	if ((shdr = gelf_getshdr (scn, shdr)) != 0) 
-        	{
-            	if (shdr->sh_type == SHT_DYNSYM) 
-            	{
-                	Elf_Data *data;
-                	char *name;
-                	char *stringName;
-                	data = 0;
-                	int number = 0;
-                	if ((data = elf_getdata(scn, data)) == 0 || data->d_size == 0)
-                	{
-                    	throw dwarf::lib::No_entry(); // FIXME: better choice of exception
-                	}
-                	/*now print the symbols*/
-                	firstsym = (GElf_Sym*) data->d_buf;
-                	lastsym = (GElf_Sym*) ((char*) data->d_buf + data->d_size);
-					return;
+		char *name = 0;
+		if (gelf_getshdr (scn, &shdr) != 0) 
+		{
+			if (shdr.sh_type == SHT_DYNSYM) 
+			{
+				Elf_Data *data;
+				char *name;
+				char *stringName;
+				data = 0;
+				int number = 0;
+				if ((data = elf_getdata(scn, data)) == 0 || data->d_size == 0)
+				{
+					throw dwarf::lib::No_entry(); // FIXME: better choice of exception
 				}
+				/* now print the symbols */
+				firstsym = (GElf_Sym*) data->d_buf;
+				lastsym = (GElf_Sym*) ((char*) data->d_buf + data->d_size);
+				return;
 			}
 		}
-		firstsym = lastsym = 0;
 	}
-	
-	~symbols_iteration_state()
-	{
-		// FIXME: do we really not have any ELF cleanup to do? 
-		// get_elf() needs no release_elf()?
-	}
+	firstsym = lastsym = 0;
 }
-
-struct symbols_iterator
+	
+process_image::symbols_iteration_state::~symbols_iteration_state()
 {
-	GElf_Sym *esym;
-	boost::shared_ptr<symbols_iteration_state> priv;
-};
-
-// NOTE: this makes a great example of lightweight data abstraction!
-// We want symbols_iterator to inherit the concepts of esym,
-// but we've added an extra field for destruction logic.
-// Maybe iterator_adapter is a more general case study
-
-std::pair<symbols_iterator, symbols_iterator> symbols(process_image::files_iterator& i)
-{
-	auto p_priv = boost::make_shared<symbols_iteration_state>(i);
-	symbols_iterator begin = { p_priv->firstsym, p_priv };
-	symbols_iterator end = { p_priv->lastsym, p_priv };
-	return std::make_pair(begin, end);
+	// FIXME: do we really not have any ELF cleanup to do? 
+	// get_elf() needs no release_elf()?
 }
 
 process_image::sym_binding_t resolve_symbol_from_process_image(
-	const std::string& sym, /*process_image::files_iterator * */ void *p_file_iterator_void)
+	const std::string& sym, /*process_image::files_iterator * */ void *p_pair_void)
 {
-	Elf *elf;
-    process_image::files_iterator *p_file_iterator
-     = reinterpret_cast<process_image::files_iterator *>(p_file_iterator_void);
-	(*p_file_iterator)->second.p_df->get_elf(&elf);
-    // code gratefully stolen from Sun libelf docs
-    Elf_Scn* scn = 0;
-    int number = 0;
-    while ((scn = elf_nextscn(elf, scn)) != 0) 
-    {
-        char *name = 0;
-        GElf_Shdr *shdr;
-        if ((shdr = gelf_getshdr (scn, shdr)) != 0) 
-        {
-            if (shdr->sh_type == SHT_DYNSYM) 
-            {
-                Elf_Data *data;
-                char *name;
-                char *stringName;
-                data = 0;
-                int number = 0;
-                if ((data = elf_getdata(scn, data)) == 0 || data->d_size == 0)
-                {
-                    throw dwarf::lib::No_entry(); // FIXME: better choice of exception
-                }
-                /*now print the symbols*/
-                GElf_Sym *esym = (GElf_Sym*) data->d_buf;
-                GElf_Sym *lastsym = (GElf_Sym*) ((char*) data->d_buf + data->d_size);
-                /* now loop through the symbol table and print it*/
-                for (; esym < lastsym; esym++)
-                {
-                    if ((esym->st_value == 0) ||
-                        (GELF_ST_BIND(esym->st_info)== STB_WEAK) ||
-                        (GELF_ST_BIND(esym->st_info)== STB_NUM) ||
-                        (
-                        	(GELF_ST_TYPE(esym->st_info)!= STT_FUNC)
-                         && (GELF_ST_TYPE(esym->st_info)!= STT_OBJECT)
-                         && (GELF_ST_TYPE(esym->st_info)!= STT_COMMON) // FIXME: support TLS
-                        )
-                        ) 
-                        continue;
-                    name = elf_strptr(elf,shdr->sh_link , (size_t)esym->st_name);
-                    if(!name)
-                    {
-                    	// null symbol name
-                        
-                        //fprintf(stderr,"%sn",elf_errmsg(elf_errno()));
-                        //exit(-1);
-                        throw dwarf::lib::No_entry(); // FIXME: better choice of exception
-                    }
-                    else if (sym == std::string(name))
-                    {
-                    	process_image::sym_binding_t binding;
-                        binding.file_relative_start_addr = esym->st_value;
-                        binding.size = esym->st_size;
-                        return binding;
-                    }
-                	//printf("%d: %sn",number++, name);
-                }
-            }
-        }
+    auto p_pair
+     = reinterpret_cast<
+	 	std::pair<process_image *, process_image::files_iterator> *>(p_pair_void);
+	auto syms = p_pair->first->symbols(p_pair->second);
+	
+	for (auto i_sym = syms.first; i_sym != syms.second; i_sym++)
+	{
+		if ((i_sym->st_value == 0) ||
+			(GELF_ST_BIND(i_sym->st_info)== STB_WEAK) ||
+			(GELF_ST_BIND(i_sym->st_info)== STB_NUM) ||
+			(
+				(GELF_ST_TYPE(i_sym->st_info)!= STT_FUNC)
+				&& (GELF_ST_TYPE(i_sym->st_info)!= STT_OBJECT)
+				&& (GELF_ST_TYPE(i_sym->st_info)!= STT_COMMON) // FIXME: support TLS
+			)
+		) continue;
+		auto name = elf_strptr(i_sym.origin->elf, i_sym.origin->shdr.sh_link , 
+			(size_t)i_sym->st_name);
+		if(!name)
+		{
+			// null symbol name
+
+			//fprintf(stderr,"%sn",elf_errmsg(elf_errno()));
+			//exit(-1);
+			throw dwarf::lib::No_entry(); // FIXME: better choice of exception
+		}
+		else if (sym == std::string(name))
+		{
+			process_image::sym_binding_t binding;
+			binding.file_relative_start_addr = i_sym->st_value;
+			binding.size = i_sym->st_size;
+			return binding;
+		}
+		//printf("%d: %sn",number++, name);
     }
-    /* no symtab */
-    throw dwarf::lib::No_entry();
+	/* not found! */
+	throw dwarf::lib::No_entry();
 }
 
 process_image::addr_t 
@@ -747,6 +699,13 @@ process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
 	return boost::dynamic_pointer_cast<dwarf::spec::with_runtime_location_die>(most_specific);
 }
 
+boost::shared_ptr<dwarf::spec::basic_die> 
+process_image::discover_heap_object(addr_t heap_loc,
+    boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+    addr_t *out_object_start_addr)
+{
+	return boost::shared_ptr<dwarf::spec::basic_die>();
+}
 
 //void *
 boost::shared_ptr<dwarf::spec::with_stack_location_die>

@@ -12,6 +12,7 @@
 
 #include <boost/shared_ptr.hpp>
 #include <boost/graph/graph_traits.hpp>
+#include <boost/iterator_adaptors.hpp>
 
 #include <gelf.h>
 
@@ -287,7 +288,7 @@ struct process_image
 		boost::shared_ptr<std::ifstream> p_if;
 		boost::shared_ptr<dwarf::lib::file> p_df;
 		boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds;
-		std::multimap<lib::Dwarf_Off, lib::Dwarf_Off> ds_type_containment;
+		/* std::multimap<lib::Dwarf_Off, lib::Dwarf_Off> ds_type_containment; */
     };
     
 	std::map<entry_key, entry> objects;
@@ -450,10 +451,54 @@ public:
          && (kind.second.p_flags & PF_X);
     }
     std::string nearest_preceding_symbol(addr_t addr); // FIXME: implement this
+
+	struct symbols_iteration_state
+	{
+		Elf *elf;
+		Elf_Scn *scn;
+		GElf_Shdr shdr;
+		GElf_Sym *firstsym;
+		GElf_Sym *lastsym;
+
+		symbols_iteration_state(const process_image::files_iterator& i);
+		~symbols_iteration_state();
+	};
+	typedef GElf_Sym *symbols_iterator_base;
+	struct symbols_iterator
+	: public boost::iterator_adaptor<symbols_iterator,
+		symbols_iterator_base> 
+		//, // Base
+		//GElf_Sym, // Value
+		//boost::random_access_traversal_tag, // Traversal
+		//GElf_Sym& // Reference
+	//>
+	{
+		typedef symbols_iterator_base Base;
+		
+		boost::shared_ptr<symbols_iteration_state> origin;
+		
+		symbols_iterator(Base p, boost::shared_ptr<symbols_iteration_state> origin)
+		 : symbols_iterator::iterator_adaptor_(p), origin(origin) {}
+
+	};
+	
+	
+	// NOTE: this makes a great example of lightweight data abstraction!
+	// We want symbols_iterator to inherit the concepts of esym,
+	// but we've added an extra field for destruction logic.
+	// Maybe iterator_adapter is a more general case study
+	std::pair<symbols_iterator, symbols_iterator> symbols(process_image::files_iterator& i)
+	{
+		auto p_priv = boost::make_shared<symbols_iteration_state>(i);
+		symbols_iterator begin(p_priv->firstsym, p_priv);
+		symbols_iterator end(p_priv->lastsym, p_priv);
+		return std::make_pair(begin, end);
+	}
+
 };
 
 process_image::sym_binding_t resolve_symbol_from_process_image(
-	const std::string& sym, /*process_image::files_iterator * */ void *p_file_iterator);
+	const std::string& sym, void *p_pair);
 int stack_print_handler(process_image *image,
 		unw_word_t frame_sp, unw_word_t frame_ip, 
 		const char *frame_proc_name,
