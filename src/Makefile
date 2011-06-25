@@ -23,13 +23,13 @@ $(C_DEPS): .%.d : %.c
 
 include $(DEPS)
 
-libprocessimage.so: process.o self-image.o
+libprocessimage.so: process.o self-image.o libheap_index_fast_hooks.so
 	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) -lheap_index_fast_hooks #-ldwarf 
 
-libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c memtable.h
+libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
 
-libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c memtable.h
+libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -pg -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) $(CFLAGS) "$<"
 
 clean:

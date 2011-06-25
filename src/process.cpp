@@ -11,6 +11,12 @@
 //#define _GNU_SOURCE
 #include <link.h>
 #include <gelf.h>
+#include <malloc.h>
+
+
+extern "C" {
+#include "heap_index.h"
+}
 
 #ifndef ELF_MAX_SEGMENTS
 #define ELF_MAX_SEGMENTS 50
@@ -514,7 +520,7 @@ process_image::sym_binding_t resolve_symbol_from_process_image(
 
 process_image::addr_t 
 process_image::get_object_from_die(
-  boost::shared_ptr<spec::with_runtime_location_die> p_d, 
+  boost::shared_ptr<spec::with_static_location_die> p_d, 
   lib::Dwarf_Addr vaddr)
 {
 	/* From a DIE, return the address of the object it denotes. 
@@ -522,8 +528,8 @@ process_image::get_object_from_die(
      * runtime. */
 
 	unsigned char *base = reinterpret_cast<unsigned char *>(get_dieset_base(p_d->get_ds()));
-    assert(p_d->get_runtime_location().size() == 1);
-    auto loc_expr = p_d->get_runtime_location();
+    assert(p_d->get_static_location().size() == 1);
+    auto loc_expr = p_d->get_static_location();
     lib::Dwarf_Unsigned result = dwarf::lib::evaluator(
         loc_expr,
         vaddr,
@@ -533,7 +539,7 @@ process_image::get_object_from_die(
     return reinterpret_cast<addr_t>(retval);
 }
 
-process_image::memory_kind process_image::discover_object_memory_kind(addr_t addr)
+process_image::memory_kind process_image::discover_object_memory_kind(addr_t addr) const
 {
 	memory_kind ret = UNKNOWN;
 	// for each range in the map...
@@ -671,7 +677,7 @@ process_image::discover_object_descr(addr_t addr,
  * specialised in their layout. Could they be stack-alloc'd? I guess so,
  * although you'd better hope that the C code which allocated them won't
  * be accessing them any more. */
-boost::shared_ptr<spec::with_runtime_location_die> 
+boost::shared_ptr<spec::with_static_location_die> 
 process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
 {
 	boost::shared_ptr<dwarf::spec::basic_die> most_specific
@@ -692,23 +698,61 @@ process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
             if (most_specific->get_tag() == 0 || most_specific->get_offset() == 0UL)
             {
         	    // failed!
-                return boost::shared_ptr<spec::with_runtime_location_die>();
+                return boost::shared_ptr<spec::with_static_location_die>();
             }
         }
 	}
-	return boost::dynamic_pointer_cast<dwarf::spec::with_runtime_location_die>(most_specific);
+	return boost::dynamic_pointer_cast<dwarf::spec::with_static_location_die>(most_specific);
 }
 
 boost::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object(addr_t heap_loc,
-    boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
-    addr_t *out_object_start_addr)
+	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+	addr_t *out_object_start_addr)
 {
-	return boost::shared_ptr<dwarf::spec::basic_die>();
+	if (m_pid == getpid())
+	{
+		/* use the local version */
+		return discover_heap_object_local(heap_loc, 
+			imprecise_static_type, out_object_start_addr);
+	}
+	else
+	{
+		/* use the remote version */
+		return discover_heap_object_remote(heap_loc, 
+			imprecise_static_type, out_object_start_addr);
+	}
+}
+
+boost::shared_ptr<dwarf::spec::basic_die> 
+process_image::discover_heap_object_local(addr_t heap_loc,
+	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+	addr_t *out_object_start_addr)
+{
+
+}
+
+boost::shared_ptr<dwarf::spec::basic_die> 
+process_image::discover_heap_object_remote(addr_t heap_loc,
+	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+	addr_t *out_object_start_addr)
+{
+	assert(false);
+	/* How to do remote access to a memtable:
+	 *
+	 * - in memtable.h, typedef-ify the pointers that we use 
+	 *   to access the table and trailers
+	 * - make memtable.h multiple-inclusion-safe (i.e. includes nothing itself, #undefs stuff)
+	 * - include memtable.h a second time but with different #defines
+	 *   and in a different C++ namespace...
+	 * - ... so that we use unw_read_ptr
+	 * - make sure none of the poiner usages in it are susceptible to the "->" bug
+	 * - then we should have a working set of remote::memtable_* functions!
+	 */
 }
 
 //void *
-boost::shared_ptr<dwarf::spec::with_stack_location_die>
+boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object(addr_t addr, addr_t *out_object_start_addr/*,
 	unw_word_t top_frame_sp, unw_word_t top_frame_ip, unw_word_t top_frame_retaddr,
     const char *top_frame_fn_name*/)
@@ -725,11 +769,11 @@ process_image::discover_stack_object(addr_t addr, addr_t *out_object_start_addr/
     }
 }
 
-boost::shared_ptr<dwarf::spec::with_stack_location_die>
+boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object_local(addr_t addr, addr_t *out_object_start_addr)
 {
 	stack_object_discovery_handler_arg arg
-     = {addr, boost::shared_ptr<dwarf::spec::with_stack_location_die>(), 0};
+     = {addr, boost::shared_ptr<dwarf::spec::with_dynamic_location_die>(), 0};
 	walk_stack(NULL, stack_object_discovery_handler, &arg);
     // forward output argument
     if (out_object_start_addr) *out_object_start_addr = arg.object_start_addr;
@@ -1060,10 +1104,10 @@ process_image::find_file_for_ip(unw_word_t ip)
 }
 
 
-static boost::shared_ptr<dwarf::spec::with_runtime_location_die> 
+static boost::shared_ptr<dwarf::spec::with_static_location_die> 
 find_more_specific_die_for_addr(dwarf::lib::abstract_dieset::iterator under_here,
     unw_word_t addr);
-static boost::shared_ptr<dwarf::spec::with_runtime_location_die> 
+static boost::shared_ptr<dwarf::spec::with_static_location_die> 
 find_more_specific_die_for_addr(dwarf::lib::abstract_dieset::iterator under_here,
     unw_word_t addr)
 {
@@ -1078,7 +1122,7 @@ find_more_specific_die_for_addr(dwarf::lib::abstract_dieset::iterator under_here
     	i != ds.end() && i.base().path_from_root.size() > initial_depth; 
         i++)
     {
-    	auto p_has_location = boost::dynamic_pointer_cast<spec::with_runtime_location_die>(*i);
+    	auto p_has_location = boost::dynamic_pointer_cast<spec::with_static_location_die>(*i);
         if (p_has_location && p_has_location->contains_addr(addr))
         {
 // 	        std::cerr << "*** found a more specific match for addr 0x" 
@@ -1198,11 +1242,11 @@ process_image::find_subprogram_for_ip(unw_word_t ip)
  
 }
 
-boost::shared_ptr<dwarf::spec::with_runtime_location_die> 
+boost::shared_ptr<dwarf::spec::with_static_location_die> 
 process_image::find_most_specific_die_for_addr(unw_word_t addr)
 {
 	/* Recursive approach: 
-     * - walk depthfirst until we find a with_runtime_location_die 
+     * - walk depthfirst until we find a with_static_location_die 
      * which contains the object. 
      * - on success, try again. */
 
@@ -1221,9 +1265,9 @@ process_image::find_most_specific_die_for_addr(unw_word_t addr)
                 found_file->second.p_ds->path_from_root(found_deeper->get_offset())),
                 	addr_offset_within_dieset);
         }
-        return boost::dynamic_pointer_cast<spec::with_runtime_location_die>(found_last);
+        return boost::dynamic_pointer_cast<spec::with_static_location_die>(found_last);
     }
-    return boost::shared_ptr<dwarf::spec::with_runtime_location_die>();
+    return boost::shared_ptr<dwarf::spec::with_static_location_die>();
 }
 
 // 	do {
@@ -1473,10 +1517,10 @@ process_image::find_most_specific_die_for_addr(unw_word_t addr)
 //          * This isn't much good though. */
 //     }
 //     
-boost::shared_ptr<dwarf::spec::with_stack_location_die>
+boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object_remote(addr_t addr, addr_t *out_object_start_addr)
 {
-	return boost::shared_ptr<dwarf::spec::with_stack_location_die>();
+	return boost::shared_ptr<dwarf::spec::with_dynamic_location_die>();
 }
 
 
@@ -1579,6 +1623,36 @@ std::pair<GElf_Shdr, GElf_Phdr> process_image::get_static_memory_elf_headers(add
     assert(this->discover_object_memory_kind(addr) != STATIC);
     // call didn't respect precondition
     assert(false);
+}
+
+std::ostream& process_image::print_object(std::ostream& s, void *obj) const
+{
+	auto kind = discover_object_memory_kind((addr_t) obj);
+	switch(kind)
+	{
+		case memory_kind::STACK:
+			std::cerr << "stack object at " << obj << std::endl; // FIXME
+			return s;
+		case memory_kind::HEAP:
+		{
+			void *obj_start;
+			struct trailer *tr = lookup_object_info(obj, &obj_start);
+			assert(tr);
+			s << "pointer " << obj << " into object starting at " << obj_start
+				<< " size " << malloc_usable_size(obj_start) << ", allocated at "
+				<< tr->alloc_site << std::endl;
+			return s;
+		}
+		case memory_kind::STATIC:
+			std::cerr << "static object at " << obj << std::endl; // FIXME:
+			return s;
+		
+		case memory_kind::UNKNOWN:
+		case memory_kind::ANON:
+		default:
+			std::cerr << "unknown object at " << obj << std::endl; // FIXME
+			return s;
+	}
 }
 
 /* static */ const char *process_image::alloc_list_lib_basename = "libprocessimage.so";

@@ -367,14 +367,14 @@ public:
     ~process_image() { if (executable_elf) elf_end(executable_elf); }
     
     std::map<std::string, file_entry>::iterator find_file_by_realpath(const std::string& path);
-    memory_kind discover_object_memory_kind(addr_t addr);
+    memory_kind discover_object_memory_kind(addr_t addr) const;
     addr_t get_dieset_base(dwarf::lib::abstract_dieset& ds);
     addr_t get_library_base(const std::string& path);
     void register_anon_segment_description(addr_t base, 
         boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds,
         addr_t base_for_dwarf_info);
 
-	typedef dwarf::spec::with_runtime_location_die::sym_binding_t sym_binding_t;
+	typedef dwarf::spec::with_static_location_die::sym_binding_t sym_binding_t;
     //sym_binding_t resolve_symbol(files_iterator file, const std::string& sym);
 	//sym_binding_t resolve_symbol(
 	//	const std::string& sym, void *p_file_iterator_void);
@@ -396,7 +396,7 @@ public:
     files_iterator find_file_for_ip(unw_word_t ip);
     boost::shared_ptr<dwarf::spec::compile_unit_die> find_compile_unit_for_ip(unw_word_t ip);    
     boost::shared_ptr<dwarf::spec::subprogram_die> find_subprogram_for_ip(unw_word_t ip);    
-    boost::shared_ptr<dwarf::spec::with_runtime_location_die> find_most_specific_die_for_addr(addr_t addr);        
+    boost::shared_ptr<dwarf::spec::with_static_location_die> find_most_specific_die_for_addr(addr_t addr);        
 
 private:
 	// typedefs for accessing the link map in the target process
@@ -422,25 +422,35 @@ public:
 	void register_range_as_dieset(addr_t begin, addr_t end, 
     	boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds);
 
-	addr_t get_object_from_die(boost::shared_ptr<dwarf::spec::with_runtime_location_die> d,
+	addr_t get_object_from_die(boost::shared_ptr<dwarf::spec::with_static_location_die> d,
 		dwarf::lib::Dwarf_Addr vaddr);
     boost::shared_ptr<dwarf::spec::basic_die> discover_object_descr(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type
          = boost::shared_ptr<dwarf::spec::type_die>(),
         addr_t *out_object_start_addr = 0);
-    boost::shared_ptr<dwarf::spec::with_stack_location_die> discover_stack_object(addr_t addr,
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object(addr_t addr,
         addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::with_stack_location_die> discover_stack_object_local(
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object_local(
     	addr_t addr, addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::with_stack_location_die> discover_stack_object_remote(
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object_remote(
     	addr_t addr, addr_t *out_object_start_addr);
         
     boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
         addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::with_runtime_location_die> discover_object(
+    boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object_local(addr_t addr,
+    	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+        addr_t *out_object_start_addr);
+    boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object_remote(addr_t addr,
+    	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+        addr_t *out_object_start_addr);
+
+    boost::shared_ptr<dwarf::spec::with_static_location_die> discover_object(
     	addr_t addr,
         addr_t *out_object_start_addr);
+	
+	std::ostream& print_object(std::ostream& s, void *obj) const;
+	
     std::pair<GElf_Shdr, GElf_Phdr> get_static_memory_elf_headers(addr_t addr);
     // various ELF conveniences
     bool is_linker_code(addr_t addr)
@@ -520,7 +530,7 @@ struct stack_object_discovery_handler_arg
 	// in
 	process_image::addr_t addr;
     // out
-    boost::shared_ptr<dwarf::spec::with_stack_location_die> discovered_die;
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discovered_die;
     process_image::addr_t object_start_addr;
 };        
 

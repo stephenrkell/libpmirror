@@ -1,3 +1,10 @@
+#ifndef MEMTABLE_H_
+#define MEMTABLE_H_
+
+#if defined(__cplusplus) || defined(c_plusplus)
+extern "C" {
+#endif
+
 #if defined (X86_64) || (defined (__x86_64__))
 #define BIGGEST_MMAP_ALLOWED (1ULL<<46)
 #else
@@ -29,7 +36,7 @@ static inline size_t memtable_mapping_size(
 	
 	long double nbytes_covered = (addr_begin == 0 && addr_end == 0) ?
 		(((long double)(unsigned long long)(void*)-1) + 1)
-		: addr_end - addr_begin;
+		: (char*)addr_end - (char*)addr_begin;
 	long double nbytes_in_table = nbytes_covered / entry_coverage_in_bytes;
 	return (size_t) nbytes_in_table;
 }
@@ -77,7 +84,7 @@ static inline void *memtable_addr(
 {
 	assert(addr >= addr_begin && addr < addr_end);
 	return memtable_index(memtable, entry_size_in_bytes, entry_coverage_in_bytes,
-		addr_begin, addr_end, (addr - addr_begin) / entry_coverage_in_bytes);
+		addr_begin, addr_end, ((char*)addr - (char*)addr_begin) / entry_coverage_in_bytes);
 }
 #define MEMTABLE_ADDR_WITH_TYPE(m, t, range, addr_begin, addr_end, addr) \
 	((t*) memtable_addr((m), sizeof(t), (range), (addr_begin), (addr_end), (addr)))
@@ -92,10 +99,10 @@ static inline void *memtable_entry_range_base(
 	void *memtable_entry_ptr
 )
 {
-	assert(memtable_entry_ptr - memtable < memtable_mapping_size(
+	assert((char*)memtable_entry_ptr - (char*)memtable < memtable_mapping_size(
 		entry_size_in_bytes, entry_coverage_in_bytes, addr_begin, addr_end));
 
-	return (memtable_entry_ptr - memtable) / entry_size_in_bytes
+	return ((char*)memtable_entry_ptr - (char*)memtable) / entry_size_in_bytes
 		* entry_coverage_in_bytes
 		+ (char*) addr_begin;
 }
@@ -136,7 +143,7 @@ static inline ptrdiff_t memtable_addr_range_offset(
 	void *addr_begin, void *addr_end, 
 	void *addr)
 {
-	return addr - memtable_addr_range_base(
+	return (char*)addr - (char*)memtable_addr_range_base(
 		memtable, entry_size_in_bytes, entry_coverage_in_bytes,
 		addr_begin, addr_end, addr);
 }
@@ -155,3 +162,8 @@ static inline int memtable_free(void *memtable,
 	return munmap(memtable, mapping_size);
 }
 
+#if defined(__cplusplus) || defined(c_plusplus)
+} /* end extern "C" */
+#endif
+
+#endif
