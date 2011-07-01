@@ -25,6 +25,7 @@
 #include <libunwind-ptrace.h>
 
 #include <srk31/algorithm.hpp> // from libsrk31c++
+#include <srk31/conjoining_iterator.hpp>
 
 extern "C" {
 #include "objdiscover.h"
@@ -68,6 +69,9 @@ extern "C" {
 
 using namespace dwarf;
 using boost::graph_traits;
+
+using srk31::conjoining_iterator;
+using srk31::conjoining_sequence;
 
 /* This is a pointer-alike type which uses libunwind's memory accessors
  * rather than accessing memory directly. This allows access to a remote
@@ -470,7 +474,8 @@ public:
 		GElf_Sym *firstsym;
 		GElf_Sym *lastsym;
 
-		symbols_iteration_state(const process_image::files_iterator& i);
+		symbols_iteration_state(const process_image::files_iterator& i,
+			Elf64_Word sh_type = SHT_DYNSYM);
 		~symbols_iteration_state();
 	};
 	typedef GElf_Sym *symbols_iterator_base;
@@ -490,6 +495,9 @@ public:
 		symbols_iterator(Base p, boost::shared_ptr<symbols_iteration_state> origin)
 		 : symbols_iterator::iterator_adaptor_(p), origin(origin) {}
 
+		symbols_iterator() // no state
+		 : symbols_iterator::iterator_adaptor_(0), origin() {}
+
 	};
 	
 	
@@ -497,13 +505,41 @@ public:
 	// We want symbols_iterator to inherit the concepts of esym,
 	// but we've added an extra field for destruction logic.
 	// Maybe iterator_adapter is a more general case study
-	std::pair<symbols_iterator, symbols_iterator> symbols(process_image::files_iterator& i)
+	std::pair<symbols_iterator, symbols_iterator> symbols(process_image::files_iterator& i,
+		Elf64_Word sh_type = SHT_DYNSYM)
 	{
-		auto p_priv = boost::make_shared<symbols_iteration_state>(i);
+		auto p_priv = boost::make_shared<symbols_iteration_state>(i, sh_type);
 		symbols_iterator begin(p_priv->firstsym, p_priv);
 		symbols_iterator end(p_priv->lastsym, p_priv);
 		return std::make_pair(begin, end);
 	}
+	std::pair<symbols_iterator, symbols_iterator> static_symbols(process_image::files_iterator& i)
+	{
+		return symbols(i, SHT_SYMTAB);
+	}
+	std::pair<symbols_iterator, symbols_iterator> dynamic_symbols(process_image::files_iterator& i)
+	{
+		return symbols(i, SHT_DYNSYM);
+	}
+	// FIXME: want all_symbols here
+	std::pair<
+		conjoining_iterator<symbols_iterator>,
+		conjoining_iterator<symbols_iterator>
+	> all_symbols(process_image::files_iterator& i)
+	{
+		typedef conjoining_iterator<symbols_iterator> all_symbols_sequence;
+		auto p_seq = boost::make_shared< conjoining_sequence<symbols_iterator> >();
+		auto dynamic_syms = static_symbols(i);
+		auto static_syms = dynamic_symbols(i);
+		p_seq->append(dynamic_syms.first, dynamic_syms.second);
+		p_seq->append(static_syms.first, static_syms.second);
+		return std::make_pair(
+			p_seq->begin(p_seq),
+			p_seq->end(p_seq)
+		);
+		
+	}
+	
 
 };
 

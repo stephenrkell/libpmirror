@@ -432,13 +432,21 @@ process_image::addr_t process_image::get_library_base_remote(const std::string& 
     return 0;
 }
 
+// constructor
 process_image::symbols_iteration_state::symbols_iteration_state
-(const process_image::files_iterator& i)
+(const process_image::files_iterator& i, Elf64_Word sh_type /* = SHT_DYNSYM */)
 {
     /* process_image::files_iterator *p_file_iterator
      = reinterpret_cast<process_image::files_iterator *>(p_file_iterator_void);
 	(*p_file_iterator)->second.p_df->get_elf(&elf);*/
 
+	if (!i->second.p_df)
+	{
+		firstsym = lastsym = 0;
+		elf = 0;
+		return;
+	}
+	
 	i->second.p_df->get_elf(&elf);
 
 	// code gratefully stolen from Sun libelf docs
@@ -449,7 +457,7 @@ process_image::symbols_iteration_state::symbols_iteration_state
 		char *name = 0;
 		if (gelf_getshdr (scn, &shdr) != 0) 
 		{
-			if (shdr.sh_type == SHT_DYNSYM) 
+			if (shdr.sh_type == sh_type) 
 			{
 				Elf_Data *data;
 				char *name;
