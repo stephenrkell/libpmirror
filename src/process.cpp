@@ -28,6 +28,8 @@ using namespace dwarf;
 /*using namespace dwarf::lib;*/ // omitted to remove Elf ambiguity
 using std::string;
 
+using boost::dynamic_pointer_cast;
+
 void process_image::update()
 {
 	bool changed = rebuild_map();
@@ -388,14 +390,17 @@ void process_image::update_rdbg()
 			auto args = std::make_pair(
 				this,
 				i_file);
-			auto resolved = resolve_symbol_from_process_image(alloc_list_symname, &args);
-			if (resolved.file_relative_start_addr != 0 && resolved.size != 0)
-			{
-				/* success! */
-				alloc_list_head_ptr_addr = 
-				 get_library_base(i_file->first) + resolved.file_relative_start_addr;
-				break;
-			}
+			
+// 			auto resolved = resolve_symbol_from_process_image(alloc_list_symname, &args);
+// 			if (resolved.file_relative_start_addr != 0 && resolved.size != 0)
+// 			{
+// 				/* success! */
+// 				alloc_list_head_ptr_addr = 
+// 				 get_library_base(i_file->first) + resolved.file_relative_start_addr;
+// 				break;
+// 			}
+// FIXME: update this for memtable-based metadata
+			assert(false);
 		}
 	}
 }
@@ -648,7 +653,7 @@ process_image::discover_object_descr(addr_t addr,
     if (discovered_obj)
     {
     	if (discovered_obj->get_tag() == DW_TAG_variable)
-	    	return *boost::dynamic_pointer_cast<
+	    	return *dynamic_pointer_cast<
     	    	dwarf::spec::variable_die>(discovered_obj)->get_type();
     	else return discovered_obj; // HACK: return subprograms as their own descriptions
     }
@@ -689,7 +694,7 @@ boost::shared_ptr<spec::with_static_location_die>
 process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
 {
 	boost::shared_ptr<dwarf::spec::basic_die> most_specific
-     = boost::dynamic_pointer_cast<dwarf::spec::basic_die>(
+     = dynamic_pointer_cast<dwarf::spec::basic_die>(
      	this->find_most_specific_die_for_addr(addr));
 
 	// if not failed already...
@@ -699,7 +704,7 @@ process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
         while (!(
     		    most_specific->get_tag() == DW_TAG_subprogram
     		    || (most_specific->get_tag() == DW_TAG_variable &&
-            	    boost::dynamic_pointer_cast<dwarf::spec::variable_die>(most_specific)
+            	    dynamic_pointer_cast<dwarf::spec::variable_die>(most_specific)
                 	    ->has_static_storage())))
         {
     	    most_specific = most_specific->get_parent();
@@ -710,7 +715,7 @@ process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
             }
         }
 	}
-	return boost::dynamic_pointer_cast<dwarf::spec::with_static_location_die>(most_specific);
+	return dynamic_pointer_cast<dwarf::spec::with_static_location_die>(most_specific);
 }
 
 boost::shared_ptr<dwarf::spec::basic_die> 
@@ -718,7 +723,24 @@ process_image::discover_heap_object(addr_t heap_loc,
 	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
 	addr_t *out_object_start_addr)
 {
-	if (m_pid == getpid())
+	auto found = informed_heap_descrs.find(heap_loc);
+	if (found == informed_heap_descrs.end())
+	{
+		// look for the next address strictly smaller
+		auto upper_bound = informed_heap_descrs.upper_bound(heap_loc);
+		if (upper_bound != informed_heap_descrs.end()
+			&& upper_bound->second->calculate_byte_size()
+			&& *upper_bound->second->calculate_byte_size() < heap_loc - upper_bound->first)
+		{
+			found = upper_bound;
+		}
+	}
+	
+	if (found != informed_heap_descrs.end())
+	{
+		return dynamic_pointer_cast<dwarf::spec::basic_die>(found->second);
+	}
+	else if (m_pid == getpid())
 	{
 		/* use the local version */
 		return discover_heap_object_local(heap_loc, 
@@ -1130,7 +1152,7 @@ find_more_specific_die_for_addr(dwarf::lib::abstract_dieset::iterator under_here
     	i != ds.end() && i.base().path_from_root.size() > initial_depth; 
         i++)
     {
-    	auto p_has_location = boost::dynamic_pointer_cast<spec::with_static_location_die>(*i);
+    	auto p_has_location = dynamic_pointer_cast<spec::with_static_location_die>(*i);
         if (p_has_location && p_has_location->contains_addr(addr))
         {
 // 	        std::cerr << "*** found a more specific match for addr 0x" 
@@ -1159,7 +1181,7 @@ process_image::find_compile_unit_for_ip(unw_word_t ip)
         {
         	if (found_deeper->get_tag() == DW_TAG_compile_unit)
             {
-            	return boost::dynamic_pointer_cast<spec::compile_unit_die>(found_deeper);
+            	return dynamic_pointer_cast<spec::compile_unit_die>(found_deeper);
             }
             else
             {
@@ -1233,7 +1255,7 @@ process_image::find_subprogram_for_ip(unw_word_t ip)
         {
         	if (found_deeper->get_tag() == DW_TAG_subprogram)
             {
-            	return boost::dynamic_pointer_cast<spec::subprogram_die>(found_deeper);
+            	return dynamic_pointer_cast<spec::subprogram_die>(found_deeper);
             }
             else
             {
@@ -1273,7 +1295,7 @@ process_image::find_most_specific_die_for_addr(unw_word_t addr)
                 found_file->second.p_ds->path_from_root(found_deeper->get_offset())),
                 	addr_offset_within_dieset);
         }
-        return boost::dynamic_pointer_cast<spec::with_static_location_die>(found_last);
+        return dynamic_pointer_cast<spec::with_static_location_die>(found_last);
     }
     return boost::shared_ptr<dwarf::spec::with_static_location_die>();
 }
@@ -1663,6 +1685,15 @@ std::ostream& process_image::print_object(std::ostream& s, void *obj) const
 	}
 }
 
+void process_image::inform_heap_object_descr(
+	addr_t addr,
+	boost::shared_ptr<dwarf::spec::type_die> descr)
+{
+	/* Here we let the user tell us the DWARF type of a heap object,
+	 * such that later calls will discover this information. */
+	informed_heap_descrs.insert(std::make_pair(addr, descr));
+}
+
 /* static */ const char *process_image::alloc_list_lib_basename = "libprocessimage.so";
-/* static */ const char *process_image::alloc_list_symname = "__cake_alloc_list_head"; 
+/* static */ /* const char *process_image::alloc_list_symname = "__cake_alloc_list_head";  */
 

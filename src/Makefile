@@ -21,16 +21,30 @@ $(CPP_DEPS): .%.d : %.cpp
 $(C_DEPS): .%.d : %.c
 	gcc -MM $(CFLAGS) "$<"  > "$@"
 
-include $(DEPS)
+-include $(DEPS)
 
-libprocessimage.so: process.o self-image.o libheap_index_fast_hooks.so
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) -lheap_index_fast_hooks #-ldwarf 
-
+# First include the rules without the fancy CFLAGS.
+# This builds a lean, mean set of hooks libraries.
 libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
 
 libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -pg -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) $(CFLAGS) "$<"
+
+# Now add the fancy CFLAGS for the libprocessimage type-aware
+# hooks.
+#CFLAGS += -DHEAP_INDEX_TRAILER_INCLUDE=heap_index_type_field.inc
+# NO! Don't do this. It's too fragile to have our library's ABI depend on CFLAGS. 
+# Every client who includes heap_index.h will need to use the same flags. Work out
+# a more robust approach. Maybe change the hooks so that they add a trailer and 
+# *also* a user-defined amount of padding (to be defined by a separate structure)?
+# But this has to be available early enough that the very first mallocs get it.
+# UNLESS we store the padding size in the trailer! This sounds good.
+libprocessimage.so: process.o self-image.o heap_index_hooks_with_type.o
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) -lheap_index_fast_hooks #-ldwarf 
+
+heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
+	gcc $(CFLAGS) -c -o "$@" "$<"
 
 clean:
 	rm -f *.o *.so

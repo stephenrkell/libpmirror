@@ -57,7 +57,7 @@ static inline void *memtable_new(
 	return ret; /* MAP_FAILED on error */
 }
 #define MEMTABLE_NEW_WITH_TYPE(t, range, addr_begin, addr_end) \
-	memtable_new(sizeof(t), (range), (addr_begin), (addr_end))
+	(t*) memtable_new(sizeof(t), (range), (addr_begin), (addr_end))
 
 /* Get a pointer to the index-th entry. */
 static inline void *memtable_index(
@@ -82,7 +82,7 @@ static inline void *memtable_addr(
 	void *addr
 	)
 {
-	assert(addr >= addr_begin && addr < addr_end);
+	assert(addr >= addr_begin && (addr_end == 0 || addr < addr_end));
 	return memtable_index(memtable, entry_size_in_bytes, entry_coverage_in_bytes,
 		addr_begin, addr_end, ((char*)addr - (char*)addr_begin) / entry_coverage_in_bytes);
 }

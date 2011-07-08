@@ -334,7 +334,7 @@ private:
 	files_iterator i_executable; // points to the files entry representing the executable
 	
 	static const char *alloc_list_lib_basename;
-	static const char *alloc_list_symname;
+	/* static const char *alloc_list_symname; */
 	addr_t alloc_list_head_ptr_addr; // base address of data structure holding heap metadata
 
 	Elf *executable_elf;
@@ -438,7 +438,13 @@ public:
     	addr_t addr, addr_t *out_object_start_addr);
     boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object_remote(
     	addr_t addr, addr_t *out_object_start_addr);
-        
+		
+	void inform_heap_object_descr(
+		addr_t addr,
+		boost::shared_ptr<dwarf::spec::type_die>);
+private:
+	std::map<addr_t, boost::shared_ptr<dwarf::spec::type_die> > informed_heap_descrs;
+public:
     boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
         addr_t *out_object_start_addr);

@@ -12,6 +12,9 @@ struct entry
 struct trailer
 {
 	const void *alloc_site;
+#ifdef HEAP_INDEX_TRAILER_INCLUDE
+#include HEAP_INDEX_TRAILER_INCLUDE
+#endif
 	struct entry next;
 	struct entry prev;
 
