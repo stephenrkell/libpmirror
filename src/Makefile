@@ -40,8 +40,8 @@ libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 # *also* a user-defined amount of padding (to be defined by a separate structure)?
 # But this has to be available early enough that the very first mallocs get it.
 # UNLESS we store the padding size in the trailer! This sounds good.
-libprocessimage.so: process.o self-image.o heap_index_hooks_with_type.o
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) -lheap_index_fast_hooks #-ldwarf 
+libprocessimage.so: process.o self-image.o | libheap_index_fast_hooks.so #heap_index_hooks_with_type.o
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) #-lheap_index_fast_hooks #-ldwarf 
 
 heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(CFLAGS) -c -o "$@" "$<"

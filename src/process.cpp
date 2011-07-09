@@ -14,6 +14,11 @@
 #include <malloc.h>
 
 
+/* FIXME: currently we rely too much on manual updates of the memory map. 
+ * We should really trap every event that changes the memory map
+ * (dlopen(), mmap(), sbrk(), ...) 
+ * and then dispense with the updates. */
+
 extern "C" {
 #include "heap_index.h"
 }
@@ -554,6 +559,8 @@ process_image::get_object_from_die(
 
 process_image::memory_kind process_image::discover_object_memory_kind(addr_t addr) const
 {
+	/* HACK: */ const_cast<process_image *>(this)->update();
+	
 	memory_kind ret = UNKNOWN;
 	// for each range in the map...
 	for (auto i_obj = objects.begin(); i_obj != objects.end(); i_obj++)

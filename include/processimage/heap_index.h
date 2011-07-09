@@ -21,6 +21,6 @@ struct trailer
 } __attribute__((packed));
 
 
-struct trailer *lookup_object_info(void *mem, void **out_object_start);
+struct trailer *lookup_object_info(void *mem, void **out_object_start) __attribute__((weak));
 
 #endif
