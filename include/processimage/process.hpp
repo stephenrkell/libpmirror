@@ -31,41 +31,11 @@ extern "C" {
 #include "objdiscover.h"
 }
 
-// DWARF x86 register numbers pilfered from libunwind/src/x86/unwind_i.h
-#ifdef UNW_TARGET_X86
-#define DWARF_X86_EAX     0
-#define DWARF_X86_ECX     1
-#define DWARF_X86_EDX     2
-#define DWARF_X86_EBX     3
-#define DWARF_X86_ESP     4
-#define DWARF_X86_EBP     5
-#define DWARF_X86_ESI     6
-#define DWARF_X86_EDI     7
-#define DWARF_X86_EIP     8
-#define DWARF_X86_EFLAGS  9
-#define DWARF_X86_TRAPNO  10
-#define DWARF_X86_ST0     11
-#endif
-// similar for x86-64
-#ifdef UNW_TARGET_X86_64
-#define DWARF_X86_64_RAX     0
-#define DWARF_X86_64_RDX     1
-#define DWARF_X86_64_RCX     2
-#define DWARF_X86_64_RBX     3
-#define DWARF_X86_64_RSI     4
-#define DWARF_X86_64_RDI     5
-#define DWARF_X86_64_RBP     6
-#define DWARF_X86_64_RSP     7
-#define DWARF_X86_64_R8      8
-#define DWARF_X86_64_R9      9
-#define DWARF_X86_64_R10     10
-#define DWARF_X86_64_R11     11
-#define DWARF_X86_64_R12     12
-#define DWARF_X86_64_R13     13
-#define DWARF_X86_64_R14     14
-#define DWARF_X86_64_R15     15
-#define DWARF_X86_64_RIP     16
-#endif
+#include "unw_read_ptr.hpp"
+#include "unw_regs.hpp"
+
+namespace pmirror
+{
 
 using namespace dwarf;
 using boost::graph_traits;
@@ -73,185 +43,6 @@ using boost::graph_traits;
 using srk31::conjoining_iterator;
 using srk31::conjoining_sequence;
 
-/* This is a pointer-alike type which uses libunwind's memory accessors
- * rather than accessing memory directly. This allows access to a remote
- * process's address space as if it were local. Of course the remote 
- * process's ABI has to be compatible (wrt the type Target) with the local
- * process's ABI. Also, expressions involving multiple pointer hops (like
- * **foo or blah->bar->baz) won't work: you have to instantiate this class
- * around each intermediate pointer in turn. */
-template <typename Target>
-class unw_read_ptr
-{
-
-    unw_addr_space_t as;
-    void *priv;
-    Target *ptr;
-    mutable Target buf;
-public:
-    typedef unw_read_ptr<Target> self_type;
-    unw_read_ptr(unw_addr_space_t as, void *priv, Target *ptr) : as(as), priv(priv), ptr(ptr) {}
-    Target operator*() const 
-    { 
-        Target tmp; 
-        // simplifying assumption: either Target has a word-multiple size,
-        // or is less than one word in size
-        assert(sizeof (Target) < sizeof (unw_word_t)
-        	|| sizeof (Target) % sizeof (unw_word_t) == 0); // simplifying assumption
-        // tmp_base is just a pointer to tmp, cast to unw_word_t*
-        unw_word_t *tmp_base = reinterpret_cast<unw_word_t*>(&tmp);
-        
-        // Handle the less-than-one-word case specially, for clarity
-        if (sizeof (Target) < sizeof (unw_word_t))
-        {
-        	//std::cerr << "Read of size " << sizeof (Target) 
-            //	<< " from unaligned address " << reinterpret_cast<void*>(ptr)
-            //    << std::endl;
-                
-        	unw_word_t word_read;
-            /* We can't trust access_mem not to access a whole word, 
-             * so read the whole word and then copy it to tmp. */
-            unw_word_t aligned_ptr 
-            	= reinterpret_cast<unw_word_t>(ptr) & ~(sizeof (unw_word_t) - 1);
-        	unw_get_accessors(as)->access_mem(as, 
-	            aligned_ptr, // aligned read
-                &word_read,
-                0, // 0 means read, 1 means write
-                priv);
-            ptrdiff_t byte_offset = reinterpret_cast<char*>(ptr)
-             - reinterpret_cast<char*>(aligned_ptr);
-            //std::cerr << "Byte offset is " << byte_offset << std::endl;
-            // now write to tmp directly
-            tmp = *reinterpret_cast<Target*>(reinterpret_cast<char*>(&word_read) + byte_offset);
-             
-            return tmp;
-        }
-        else
-        {
-            // Now read memory one word at a time from the target address space
-            for (unw_word_t *tmp_tgt = tmp_base;
-        	    // termination condition: difference, in words,
-                tmp_tgt - tmp_base < sizeof (Target) / sizeof (unw_word_t);
-                tmp_tgt++)
-            {
-                off_t byte_offset // offset from ptr to the word we're currently reading
-                 = reinterpret_cast<char*>(tmp_tgt) - reinterpret_cast<char*>(tmp_base);
-                unw_get_accessors(as)->access_mem(as, 
-                    reinterpret_cast<unw_word_t>(reinterpret_cast<char*>(ptr) + byte_offset), 
-                    tmp_tgt,
-                    0,
-                    priv);
-		    }            
-            return tmp;
-	    }	
-    }
-    // hmm... does this work? FIXME
-    Target *operator->() const { this->buf = this->operator*(); return &this->buf; } 
-    self_type& operator++() // prefix
-    { ptr++; return *this; }
-    self_type  operator++(int) // postfix ++
-    { Target *tmp; ptr++; return self_type(as, priv, tmp); }
-    self_type& operator--() // prefix
-    { ptr++; return *this; }
-    self_type  operator--(int) // postfix ++
-    { Target *tmp; ptr--; return self_type(as, priv, tmp); }
-    
-    // we have two flavours of equality comparison: against ourselves,
-    // and against unadorned pointers (risky, but useful for NULL testing)
-    bool operator==(const self_type arg) { 
-    	return this->as == arg.as
-        && this->priv == arg.priv
-        && this->ptr == arg.ptr; 
-    }
-    bool operator==(void *arg) { return this->ptr == arg; }
-    
-    bool operator!=(const self_type arg) { return !(*this == arg); }
-    bool operator!=(void *arg) { return !(this->ptr == arg); }
-
-	// default operator= and copy constructor work for us
-    // but add another: construct from a raw ptr
-    self_type& operator=(Target *ptr) { this->ptr = ptr; return *this; }
-    self_type& operator+=(int arg) { this->ptr += arg; return *this; }
-    self_type& operator-=(int arg) { this->ptr -= arg; return *this; }
-
-    self_type operator+(int arg)
-    { return self_type(as, priv, ptr + arg); }
-
-    self_type operator-(int arg)
-    { return self_type(as, priv, ptr - arg); }
-
-    ptrdiff_t operator-(const self_type arg)
-    { return this->ptr - arg.ptr; }
-    
-    operator void*() { return ptr; }
-    
-    /* Make this pointer-like thing also an iterator. */
-    typedef std::random_access_iterator_tag iterator_category;
-    typedef Target value_type;
-    typedef ptrdiff_t difference_type;
-    typedef Target *pointer;
-    typedef Target& reference;
-    
-
-};
-
-/* Register access implementation using libunwind. Instances may be 
- * passed to dwarf::lib::evaluator. */
-class libunwind_regs : public dwarf::lib::regs
-{
-    unw_cursor_t *c;
-public:
-    dwarf::lib::Dwarf_Signed get(int i)
-    {
-        unw_word_t regval;
-        switch(i)
-        {
-#ifdef UNW_TARGET_X86
-            case DWARF_X86_EAX: unw_get_reg(c, UNW_X86_EAX, &regval); break;
-			case DWARF_X86_EDX: unw_get_reg(c, UNW_X86_EDX, &regval); break;
-			case DWARF_X86_ECX: unw_get_reg(c, UNW_X86_ECX, &regval); break;
-			case DWARF_X86_EBX: unw_get_reg(c, UNW_X86_EBX, &regval); break;
-			case DWARF_X86_ESI: unw_get_reg(c, UNW_X86_ESI, &regval); break;
-            case DWARF_X86_EDI: unw_get_reg(c, UNW_X86_EDI, &regval); break;
-            case DWARF_X86_EBP: unw_get_reg(c, UNW_X86_EBP, &regval); 
-                std::cerr << "read EBP as 0x" << std::hex << regval << std::endl;
-                break;
-            case DWARF_X86_ESP: unw_get_reg(c, UNW_X86_ESP, &regval); 
-                std::cerr << "read ESP as 0x" << std::hex << regval << std::endl;                    
-                break;
-            case DWARF_X86_EIP: unw_get_reg(c, UNW_X86_EIP, &regval); break;
-            case DWARF_X86_EFLAGS: unw_get_reg(c, UNW_X86_EFLAGS, &regval); break;
-            case DWARF_X86_TRAPNO: unw_get_reg(c, UNW_X86_TRAPNO, &regval); break;
-#endif
-#ifdef UNW_TARGET_X86_64
-case DWARF_X86_64_RAX: unw_get_reg(c, UNW_X86_64_RAX, &regval); break;
-case DWARF_X86_64_RDX: unw_get_reg(c, UNW_X86_64_RDX, &regval); break;
-case DWARF_X86_64_RCX: unw_get_reg(c, UNW_X86_64_RCX, &regval); break;
-case DWARF_X86_64_RBX: unw_get_reg(c, UNW_X86_64_RBX, &regval); break;
-case DWARF_X86_64_RSI: unw_get_reg(c, UNW_X86_64_RSI, &regval); break;
-case DWARF_X86_64_RDI: unw_get_reg(c, UNW_X86_64_RDI, &regval); break;
-case DWARF_X86_64_RBP: unw_get_reg(c, UNW_X86_64_RBP, &regval); 
-                std::cerr << "read RBP as 0x" << std::hex << regval << std::endl; break;
-case DWARF_X86_64_RSP: unw_get_reg(c, UNW_X86_64_RSP, &regval); 
-                std::cerr << "read RSP as 0x" << std::hex << regval << std::endl; break;
-case DWARF_X86_64_R8: unw_get_reg(c, UNW_X86_64_R8, &regval); break;
-case DWARF_X86_64_R9: unw_get_reg(c, UNW_X86_64_R9, &regval); break;
-case DWARF_X86_64_R10: unw_get_reg(c, UNW_X86_64_R10, &regval); break;
-case DWARF_X86_64_R11: unw_get_reg(c, UNW_X86_64_R11, &regval); break;
-case DWARF_X86_64_R12: unw_get_reg(c, UNW_X86_64_R12, &regval); break;
-case DWARF_X86_64_R13: unw_get_reg(c, UNW_X86_64_R13, &regval); break;
-case DWARF_X86_64_R14: unw_get_reg(c, UNW_X86_64_R14, &regval); break;
-case DWARF_X86_64_R15: unw_get_reg(c, UNW_X86_64_R15, &regval); break;
-case DWARF_X86_64_RIP: unw_get_reg(c, UNW_X86_64_RIP, &regval); break;
-#endif
-            default:
-                throw dwarf::lib::Not_supported("unsupported register number");
-        }
-        return regval;
-    }
-    libunwind_regs(unw_cursor_t *c) : c(c) {}
-};
-        
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */
 boost::shared_ptr<dwarf::spec::basic_die> resolve_first(
@@ -343,8 +134,50 @@ private:
 	// a list of idents below the CU level
 	// (and we don't expect these to recur, although they theoretically could),
 	// make this a map from these ident lists to sets of abstract_dieset::positions
+	
+	/* A cache of the location */
+	typedef std::map< 
+		std::pair< 
+			dwarf::spec::abstract_dieset::position_and_path, 
+			addr_t 
+		>,
+		dwarf::spec::abstract_dieset::position_and_path 
+	> location_refinements_cache_t;
+	location_refinements_cache_t location_refinements_cache;
+	
+	dwarf::lib::abstract_dieset::position_and_path
+	find_more_specific_die_for_dieset_relative_addr(
+		dwarf::spec::abstract_dieset::position_and_path under_here,
+    	unw_word_t addr);
+		
+	template <typename Pred>
+	boost::shared_ptr<dwarf::spec::with_static_location_die> 
+	find_containing_die_for_absolute_addr(
+		unw_word_t addr,
+		const Pred& pred,
+		bool innermost);
+	template <typename Pred>
+	boost::shared_ptr<dwarf::spec::with_static_location_die> 
+	find_containing_die_for_dieset_relative_addr(
+		dwarf::spec::abstract_dieset& ds,
+		dwarf::lib::Dwarf_Off dieset_relative_addr, 
+		const Pred& pred,
+		bool innermost);
 
 public:
+	boost::shared_ptr<dwarf::spec::subprogram_die> 
+	find_subprogram_for_absolute_ip(unw_word_t ip);
+	
+	boost::shared_ptr<dwarf::spec::compile_unit_die> 
+	find_compile_unit_for_absolute_ip(unw_word_t ip);
+	
+	boost::shared_ptr<dwarf::spec::with_static_location_die> 
+	find_containing_die_for_absolute_addr(unw_word_t addr, bool innermost);
+	
+    boost::shared_ptr<dwarf::spec::with_static_location_die> 
+	find_most_specific_die_for_absolute_addr(addr_t addr)
+	{ return find_containing_die_for_absolute_addr(addr, true); }
+
     process_image(pid_t pid = -1) 
     : m_pid(pid == -1 ? getpid() : pid),
       unw_as(pid == -1 ? 
@@ -374,6 +207,7 @@ public:
     memory_kind discover_object_memory_kind(addr_t addr) const;
     addr_t get_dieset_base(dwarf::lib::abstract_dieset& ds);
     addr_t get_library_base(const std::string& path);
+
     void register_anon_segment_description(addr_t base, 
         boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds,
         addr_t base_for_dwarf_info);
@@ -396,11 +230,8 @@ public:
     boost::shared_ptr<dwarf::spec::basic_die> find_first_matching(
         bool(*pred)(boost::shared_ptr<dwarf::spec::basic_die>, void *pred_arg), void *pred_arg);
     
-	objects_iterator find_object_for_ip(unw_word_t ip);
-    files_iterator find_file_for_ip(unw_word_t ip);
-    boost::shared_ptr<dwarf::spec::compile_unit_die> find_compile_unit_for_ip(unw_word_t ip);    
-    boost::shared_ptr<dwarf::spec::subprogram_die> find_subprogram_for_ip(unw_word_t ip);    
-    boost::shared_ptr<dwarf::spec::with_static_location_die> find_most_specific_die_for_addr(addr_t addr);        
+	objects_iterator find_object_for_addr(unw_word_t addr);
+    files_iterator find_file_for_addr(unw_word_t addr);
 
 private:
 	// typedefs for accessing the link map in the target process
@@ -423,39 +254,59 @@ private:
 		std::multimap<lib::Dwarf_Off, lib::Dwarf_Off>& out_mm,
 		spec::abstract_dieset& ds); */
 public:
-	void register_range_as_dieset(addr_t begin, addr_t end, 
+	void 
+	register_range_as_dieset(addr_t begin, addr_t end, 
     	boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds);
 
-	addr_t get_object_from_die(boost::shared_ptr<dwarf::spec::with_static_location_die> d,
+	addr_t 
+	get_object_from_die(boost::shared_ptr<dwarf::spec::with_static_location_die> d,
 		dwarf::lib::Dwarf_Addr vaddr);
-    boost::shared_ptr<dwarf::spec::basic_die> discover_object_descr(addr_t addr,
+		
+    boost::shared_ptr<dwarf::spec::basic_die> 
+	discover_object_descr(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type
          = boost::shared_ptr<dwarf::spec::type_die>(),
         addr_t *out_object_start_addr = 0);
-    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object(addr_t addr,
+
+private:
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> 
+	discover_stack_object(addr_t addr,
         addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object_local(
-    	addr_t addr, addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> discover_stack_object_remote(
+		
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> 
+	discover_stack_object_local(
     	addr_t addr, addr_t *out_object_start_addr);
 		
-	void inform_heap_object_descr(
+    boost::shared_ptr<dwarf::spec::with_dynamic_location_die> 
+	discover_stack_object_remote(
+    	addr_t addr, addr_t *out_object_start_addr);
+		
+public:
+	void 
+	inform_heap_object_descr(
 		addr_t addr,
 		boost::shared_ptr<dwarf::spec::type_die>);
 private:
 	std::map<addr_t, boost::shared_ptr<dwarf::spec::type_die> > informed_heap_descrs;
-public:
-    boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object(addr_t addr,
+
+    boost::shared_ptr<dwarf::spec::basic_die> 
+	discover_heap_object(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
         addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object_local(addr_t addr,
+		
+    boost::shared_ptr<dwarf::spec::basic_die>
+	discover_heap_object_local(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
         addr_t *out_object_start_addr);
-    boost::shared_ptr<dwarf::spec::basic_die> discover_heap_object_remote(addr_t addr,
+		
+    boost::shared_ptr<dwarf::spec::basic_die> 
+	discover_heap_object_remote(addr_t addr,
     	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
         addr_t *out_object_start_addr);
 
-    boost::shared_ptr<dwarf::spec::with_static_location_die> discover_object(
+public:
+    boost::shared_ptr<dwarf::spec::with_static_location_die> 
+	discover_object(
     	addr_t addr,
         addr_t *out_object_start_addr);
 	
@@ -540,8 +391,8 @@ public:
 		p_seq->append(dynamic_syms.first, dynamic_syms.second);
 		p_seq->append(static_syms.first, static_syms.second);
 		return std::make_pair(
-			p_seq->begin(p_seq),
-			p_seq->end(p_seq)
+			p_seq->begin(/*p_seq*/),
+			p_seq->end(/*p_seq*/)
 		);
 		
 	}
@@ -577,5 +428,7 @@ struct stack_object_discovery_handler_arg
 };        
 
 std::ostream& operator<<(std::ostream& s, const process_image::memory_kind& k);
+
+} // end namespace pmirror
 
 #endif

@@ -7,14 +7,15 @@ extern "C" {
 #include <map>
 #include <process.hpp>
 
-int ready;
+using namespace pmirror;
 
-void *get_self_image(void)
-{
-	static process_image self(-1);
-	
-	return &self;
-}
+namespace pmirror {
+	int ready;
+	process_image self(-1);
+	void *get_self_image(void)
+	{
+		return &self;
+	}
 
 void print_guessed_region_type(void *img, void *begin, size_t size, const void *caller)
 {
@@ -32,7 +33,7 @@ void print_guessed_region_type(void *img, void *begin, size_t size, const void *
 	
 	/* Look up types defined in the caller. */
 	boost::shared_ptr<dwarf::spec::compile_unit_die> p_cu =
-		image->find_compile_unit_for_ip(reinterpret_cast<unw_word_t>(caller)); 
+		image->find_compile_unit_for_absolute_ip(reinterpret_cast<unw_word_t>(caller)); 
 	
 	if (!p_cu)
 	{
@@ -82,3 +83,5 @@ void print_guessed_region_type(void *img, void *begin, size_t size, const void *
 		}
 	}
 }	
+
+} // end namespace pmirror

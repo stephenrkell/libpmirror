@@ -4,12 +4,19 @@ CFLAGS += -I../include/processimage
 CFLAGS += -I$(MALLOC_HOOKS)
 CFLAGS += -std=gnu99 -fPIC -g -O0 # need gnu99 for Linux-specific mmap() flags
 CXXFLAGS += -I../include/processimage
+CXXFLAGS += -I../include
 CXXFLAGS += -I${HOME}/scratch/opt/include
 CXXFLAGS += -std=c++0x -fPIC -g -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
 
-default: libprocessimage.so libheap_index_hooks.so libheap_index_fast_hooks.so
+default: \
+libprocessimage.so \
+libheap_index_hooks.so \
+libheap_index_fast_hooks.so \
+librtti.so \
+libreflect.so
 
-CPP_SRC := process.cpp
+CPP_SRC := process.cpp stack.cpp heap.cpp static.cpp discover.cpp symbols.cpp map.cpp print.cpp
+CPP_OBJS := $(patsubst %.cpp,%.o,$(CPP_SRC))
 #C_SRC := malloc_hooks.c
 
 CPP_DEPS := $(patsubst %.cpp,.%.d,$(CPP_SRC))
@@ -22,6 +29,11 @@ $(C_DEPS): .%.d : %.c
 	gcc -MM $(CFLAGS) "$<"  > "$@"
 
 -include $(DEPS)
+
+librtti.so: librtti.cpp libreflect.so
+	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" -L. -Wl,-R$(realpath .) -lreflect 
+libreflect.so: self-image.o
+	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" 
 
 # First include the rules without the fancy CFLAGS.
 # This builds a lean, mean set of hooks libraries.
@@ -40,7 +52,7 @@ libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 # *also* a user-defined amount of padding (to be defined by a separate structure)?
 # But this has to be available early enough that the very first mallocs get it.
 # UNLESS we store the padding size in the trailer! This sounds good.
-libprocessimage.so: process.o self-image.o | libheap_index_fast_hooks.so #heap_index_hooks_with_type.o
+libprocessimage.so: $(CPP_OBJS) | libheap_index_fast_hooks.so #heap_index_hooks_with_type.o
 	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) #-lheap_index_fast_hooks #-ldwarf 
 
 heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 

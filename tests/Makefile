@@ -11,6 +11,8 @@ LDLIBS  += -ldwarf
 LDLIBS  += -lelf -lsupc++ -lboost_regex
 LDLIBS  += -lunwind -lunwind-ptrace -lunwind-$(shell arch)
 LDLIBS  += -ldl
+LDLIBS  += -lrtti
+LDLIBS  += -lreflect
 
 SRC := $(wildcard *.cpp)
 ALL_TESTS := $(patsubst %.cpp,%,$(SRC))
