@@ -7,9 +7,12 @@ src:
 .PHONY: clean
 clean:
 	$(MAKE) -C src clean
-	rm -f lib/libprocessimage.so 
+	rm -f lib/*.so 
 
 
 .PHONY: lib
 lib: src
-	test -L lib/libprocessimage.so || (mkdir -p lib && cd lib && ln -sf ../src/libprocessimage.so .)
+	test -L lib/libmirror.so || (mkdir -p lib && cd lib && ln -sf ../src/libpmirror.so .)
+	test -L lib/librtti.so || (mkdir -p lib && cd lib && ln -sf ../src/librtti.so .)
+	test -L lib/libreflect.so || (mkdir -p lib && cd lib && ln -sf ../src/libreflect.so .)
+	test -L lib/libheap_index_fast_hooks.so || (mkdir -p lib && cd lib && ln -sf ../src/libheap_index_fast_hooks.so .)

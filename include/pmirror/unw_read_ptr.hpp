@@ -4,6 +4,7 @@
 #include <libunwind.h>
 #include <libunwind-ptrace.h>
 
+namespace pmirror {
 
 /* This is a pointer-alike type which uses libunwind's memory accessors
  * rather than accessing memory directly. This allows access to a remote
@@ -126,5 +127,7 @@ public:
     
 
 };
+
+}
 
 #endif

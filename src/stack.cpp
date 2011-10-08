@@ -94,7 +94,8 @@ int stack_object_discovery_handler(process_image *image,
         && addr >= frame_sp)
     {
         std::cerr << "Variable at 0x" << std::hex << addr << std::dec
-        	<< " appears to be in frame " << frame_proc_name << std::endl;
+        	<< " appears to be in frame " << frame_proc_name 
+			<< ", ip=0x" << std::hex << frame_ip << std::dec << std::endl;
     }
 	else return 0; // keep going
 
@@ -144,6 +145,7 @@ int stack_object_discovery_handler(process_image *image,
             	arg_obj->object_start_addr = addr - ret->first;
         		return 1; // 1 means "can stop now"
         	}
+			else std::cerr << "Did not match an actual parameter -- must be local variable." << std::endl;
 		}
     }
     // if we got here, look for a local of the current frame
@@ -174,6 +176,7 @@ int stack_object_discovery_handler(process_image *image,
         arg_obj->object_start_addr = addr - ret->first;
         return 1; // 1 means "can stop now"
     }
+	else std::cerr << "Did not match a local variable -- giving up." << std::endl;
     return 0;
 }
         

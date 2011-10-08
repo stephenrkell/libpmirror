@@ -130,8 +130,8 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 
 	std::cerr << "*** looking for a more specific match for dieset relative addr 0x" 
 		<< std::hex << dieset_relative_addr << std::hex
-		//<< " than DIE at offset 0x" 
-		//<< std::hex << (*initial_under_here.p_ds)[initial_under_here.off]->get_offset() 
+		<< " than DIE at offset 0x" 
+		<< std::hex << (*initial_under_here.p_ds)[initial_under_here.off]->get_offset() 
 		<< std::dec << std::endl;
 	
 	
@@ -192,11 +192,11 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 	{
 		unsigned depth = i.base().path_from_root.size();
 		
-		std::cerr << "*** considering " 
-			<< (*i)->get_spec().tag_lookup((*i)->get_tag())
-			<< " at 0x"
-			<< std::hex << (*i)->get_offset() << std::dec << std::endl;
-			//<< std::hex << i << std::endl;
+// 		std::cerr << "*** considering " 
+// 			<< (*i)->get_spec().tag_lookup((*i)->get_tag())
+// 			<< " at 0x"
+// 			<< std::hex << (*i)->get_offset() << std::dec << std::endl;
+// 			//<< std::hex << i << std::endl;
 		auto p_has_location = dynamic_pointer_cast<spec::with_static_location_die>(*i);
 		if (p_has_location && p_has_location->contains_addr(dieset_relative_addr))
 		{
@@ -224,10 +224,11 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 			// return
 			return i.base();
 		}
-		else std::cerr << (p_has_location ? "no static location" : "does not contain addr") << std::endl;
+		//else std::cerr << (p_has_location ? "no static location" : "does not contain addr") << std::endl;
 	}
 	std::cerr << "*** failed to find a more specific match for dieset-relative addr 0x" 
 		<< std::hex << dieset_relative_addr << std::hex
+		<< " (than DIE at offset 0x" << std::hex << initial_under_here.off << std::dec
 		<< std::endl;
 	
 	// add negative result to cache
