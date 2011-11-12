@@ -28,10 +28,10 @@ public:
 			case DWARF_X86_ESI: unw_get_reg(c, UNW_X86_ESI, &regval); break;
             case DWARF_X86_EDI: unw_get_reg(c, UNW_X86_EDI, &regval); break;
             case DWARF_X86_EBP: unw_get_reg(c, UNW_X86_EBP, &regval); 
-                //std::cerr << "read EBP as 0x" << std::hex << regval << std::endl;
+                std::cerr << "read EBP as 0x" << std::hex << regval << std::endl;
                 break;
             case DWARF_X86_ESP: unw_get_reg(c, UNW_X86_ESP, &regval); 
-                //std::cerr << "read ESP as 0x" << std::hex << regval << std::endl;                    
+                std::cerr << "read ESP as 0x" << std::hex << regval << std::endl;                    
                 break;
             case DWARF_X86_EIP: unw_get_reg(c, UNW_X86_EIP, &regval); break;
             case DWARF_X86_EFLAGS: unw_get_reg(c, UNW_X86_EFLAGS, &regval); break;
@@ -45,9 +45,9 @@ public:
 			case DWARF_X86_64_RSI: unw_get_reg(c, UNW_X86_64_RSI, &regval); break;
 			case DWARF_X86_64_RDI: unw_get_reg(c, UNW_X86_64_RDI, &regval); break;
 			case DWARF_X86_64_RBP: unw_get_reg(c, UNW_X86_64_RBP, &regval); 
-                //std::cerr << "read RBP as 0x" << std::hex << regval << std::endl; break;
+                std::cerr << "read RBP as 0x" << std::hex << regval << std::endl; break;
 			case DWARF_X86_64_RSP: unw_get_reg(c, UNW_X86_64_RSP, &regval); 
-                //std::cerr << "read RSP as 0x" << std::hex << regval << std::endl; break;
+                std::cerr << "read RSP as 0x" << std::hex << regval << std::endl; break;
 			case DWARF_X86_64_R8: unw_get_reg(c, UNW_X86_64_R8, &regval); break;
 			case DWARF_X86_64_R9: unw_get_reg(c, UNW_X86_64_R9, &regval); break;
 			case DWARF_X86_64_R10: unw_get_reg(c, UNW_X86_64_R10, &regval); break;

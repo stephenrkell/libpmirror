@@ -289,7 +289,7 @@ process_image::find_containing_die_for_absolute_addr(
 	process_image::files_iterator found_file = find_file_for_addr(addr);
 	assert (found_file != this->files.end());
 	dwarf::spec::abstract_dieset& ds = *found_file->second.p_ds;
-	unsigned dieset_relative_addr = addr - get_dieset_base(ds);
+	unw_word_t dieset_relative_addr = addr - get_dieset_base(ds);
 
 	auto found = find_containing_die_for_dieset_relative_addr(
 			ds,

@@ -56,6 +56,7 @@ struct process_image
      * a dieset open on each one. We must keep this map in sync with the
      * actual process map. */
     typedef unw_word_t addr_t;
+	static_assert(sizeof (addr_t) >= sizeof (void*), "address size is too small");
 	typedef std::pair<addr_t, addr_t> entry_key;
     
     static const char *ANONYMOUS_REGION_FILENAME;
