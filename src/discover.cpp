@@ -43,7 +43,7 @@ process_image::discover_object_descr(addr_t addr,
 			if (discovered_obj)
 			{
 				if (discovered_obj->get_tag() == DW_TAG_variable)
-					return *dynamic_pointer_cast<
+					return dynamic_pointer_cast<
 						dwarf::spec::variable_die>(discovered_obj)->get_type();
 				else return discovered_obj; // HACK: return subprograms as their own descriptions
 			}
@@ -57,7 +57,7 @@ process_image::discover_object_descr(addr_t addr,
 			auto discovered_obj = discover_stack_object(addr, out_object_start_addr);
 			if (discovered_obj && discovered_obj->get_type()) 
 			{
-				return *discovered_obj->get_type();
+				return discovered_obj->get_type();
 			}
 			else return boost::shared_ptr<spec::basic_die>();
 		}
