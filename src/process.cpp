@@ -60,11 +60,11 @@ boost::shared_ptr<spec::basic_die> resolve_first(
     std::vector<boost::shared_ptr<spec::with_named_children_die > > starting_points,
     bool(*pred)(spec::basic_die&) /*=0*/)
 {
-	for (auto i_start = starting_points.begin(); i_start != starting_points.end(); i_start++)
+	for (auto i_start = starting_points.begin(); i_start != starting_points.end(); ++i_start)
     {
     	std::vector<boost::shared_ptr<spec::basic_die> > results;
         (*i_start)->scoped_resolve_all(path.begin(), path.end(), results);
-        for (auto i_result = results.begin(); i_result != results.end(); i_result++)
+        for (auto i_result = results.begin(); i_result != results.end(); ++i_result)
         {
         	assert(*i_result); // result should not be null ptr
 			std::cerr << "Considering result " << **i_result << std::endl;
@@ -79,11 +79,11 @@ process_image::find_first_matching(
 		bool(*pred)(boost::shared_ptr<dwarf::spec::basic_die>, void *pred_arg),
 		void *pred_arg)
 {
-	for (auto i_file = files.begin(); i_file != files.end(); i_file++)
+	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
 	{
 		if (i_file->second.p_ds)
 		{
-			for (auto i_die = i_file->second.p_ds->begin(); i_die != i_file->second.p_ds->end(); i_die++)
+			for (auto i_die = i_file->second.p_ds->begin(); i_die != i_file->second.p_ds->end(); ++i_die)
 			{
 				auto die_ptr = (*i_file->second.p_ds)[i_die.base().off];
 				if (pred(die_ptr, pred_arg))

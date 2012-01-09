@@ -132,7 +132,7 @@ process_image::memory_kind process_image::discover_object_memory_kind(addr_t add
 	
 	memory_kind ret = UNKNOWN;
 	// for each range in the map...
-	for (auto i_obj = objects.begin(); i_obj != objects.end(); i_obj++)
+	for (auto i_obj = objects.begin(); i_obj != objects.end(); ++i_obj)
     {
     	addr_t begin = i_obj->first.first;
         addr_t end = i_obj->first.second;

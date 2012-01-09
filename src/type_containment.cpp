@@ -21,12 +21,12 @@ process_image::update_master_type_equivalence()
 	 *   ... *NOT* every other type in there, but
 	     ... the *first* type in there only! Rely on transitivity! */
 	 
-	for (auto i_file = files.begin(); i_file != files.end(); i_file++)
+	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
 	{
 		if (!i_file->second.p_ds) continue;
 		for (auto i_die = i_file->second.p_ds->begin();
 				i_die != i_file->second.p_ds->end();
-				i_die++)
+				++i_die)
 		{
 			auto t = boost::dynamic_pointer_cast<dwarf::spec::type_die>(*i_die);
 			if (t)
@@ -36,11 +36,11 @@ process_image::update_master_type_equivalence()
 				// check rep-compatibility with every other element
 				auto i_pos_plus_one = master_type_equivalence[key].begin();
 				if  (master_type_equivalence[key].begin() != master_type_equivalence[key].end())
-				{ i_pos_plus_one++; }
+				{ ++i_pos_plus_one; }
 
 				for (auto i_pos = master_type_equivalence[key].begin();
 						i_pos !=  /*master_type_equivalence[key].end();*/ i_pos_plus_one;
-						i_pos++)
+						++i_pos)
 				{
 					auto t_test = boost::dynamic_pointer_cast<dwarf::spec::type_die>(
 						(*i_pos->p_ds)[i_pos->off]);
@@ -81,11 +81,11 @@ process_image::update_master_type_containment()
 	 * to something denoting its whole equivalence class? 
 	 * A: Yes. */
 	
-	for (auto i_file = files.begin(); i_file != files.end(); i_file++)
+	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
 	{
 		for (auto i_entry = i_file->second.ds_type_containment.begin();
 				i_entry != i_file->second.ds_type_containment.end();
-				i_entry++)
+				++i_entry)
 		{
 			// each entry is a pair <off1, off2>
 			// where the type at off2 _immediately contains_ that at off1
@@ -205,7 +205,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 					);
 				for (auto i_containment_pair = containing_types.first;
 						i_containment_pair != containing_types.second;
-						i_containment_pair++)
+						++i_containment_pair)
 				{
 					// FIXME: use reachability here!
 					assert(master_type_equivalence[i_containment_pair->second].begin()
@@ -221,7 +221,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 					// Now for each position at which this type contains our imprecise type
 					for (auto i_child = containing_type->children_begin();
 							i_child != containing_type->children_end();
-							i_child++)
+							++i_child)
 					{
                     	if ((*i_child)->get_tag() == DW_TAG_member
                         	|| (*i_child)->get_tag() == DW_TAG_inheritance)
@@ -325,7 +325,7 @@ void process_image::write_type_containment_relation(
 	// DEBUG: 
 	// HACK: find this dieset in the files table
 	boost::optional<std::string> ds_filename;
-	for (auto i_file = files.begin(); i_file != files.end(); i_file++)
+	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
 	{
 		if (i_file->second.p_ds.get() == &ds) { ds_filename = i_file->first; break; }
 	}
@@ -340,7 +340,7 @@ void process_image::write_type_containment_relation(
 	 * and the type at off2 _immediately contains_ (i.e. instantiates) that at off1. */
 	for (auto i_node = ds.begin();
 			i_node != ds.end();
-			i_node++)
+			++i_node)
 	{
 		++count;
 		if (count % 100 == 0) std::cerr << '\r' << count;
@@ -356,7 +356,7 @@ void process_image::write_type_containment_relation(
 			 * i.e. data type instantiations. */
 			for (auto i_child = (*i_node)->children_begin();
 						i_child != (*i_node)->children_end();
-						i_child++)
+						++i_child)
 			{
 				if (dynamic_pointer_cast<member_die>(*i_child)
 					&& dynamic_pointer_cast<member_die>(*i_child)->get_type())

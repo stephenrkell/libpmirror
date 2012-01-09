@@ -349,7 +349,7 @@ void process_image::update_rdbg()
 	
 	/* Now we have rdbg, we can look for the heap metadata. Its base object
 	 * lives in a well-known library at a well-known symbol name. */
-	for (auto i_file = files.begin(); i_file != files.end(); i_file++)
+	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
 	{
 		if (std::string(
 				basename(

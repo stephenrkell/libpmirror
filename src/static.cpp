@@ -37,7 +37,7 @@ using dwarf::spec::compile_unit_die;
 process_image::objects_iterator 
 process_image::find_object_for_addr(unw_word_t addr)
 {
-    for (auto i_entry = this->objects.begin(); i_entry != this->objects.end(); i_entry++)
+    for (auto i_entry = this->objects.begin(); i_entry != this->objects.end(); ++i_entry)
 	{
     	/* Test whether this addr is within this library's mapped regions. */
         if (addr >= i_entry->first.first

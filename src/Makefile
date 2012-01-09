@@ -3,8 +3,9 @@ CFLAGS += -I$(MALLOC_HOOKS)
 CFLAGS += -std=gnu99 -fPIC -g -O0 # need gnu99 for Linux-specific mmap() flags
 CXXFLAGS += -I../include/pmirror
 CXXFLAGS += -I../include
-CXXFLAGS += -I${HOME}/scratch/opt/include
 CXXFLAGS += -std=c++0x -fPIC -g -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
+
+LDFLAGS += -L../lib -Wl,-R$(realpath ../lib)
 
 default: \
 libpmirror.so \
@@ -15,23 +16,23 @@ libreflect.so
 
 CPP_SRC := process.cpp stack.cpp heap.cpp static.cpp discover.cpp symbols.cpp map.cpp print.cpp
 CPP_OBJS := $(patsubst %.cpp,%.o,$(CPP_SRC))
-#C_SRC := malloc_hooks.c
+C_SRC := heap_index_hooks.c
 
 CPP_DEPS := $(patsubst %.cpp,.%.d,$(CPP_SRC))
 C_DEPS := $(patsubst %.c,.%.d,$(C_SRC))
 DEPS := $(CC_DEPS) $(CPP_DEPS) $(C_DEPS)
 
 $(CPP_DEPS): .%.d : %.cpp
-	g++ -MM $(CXXFLAGS) "$<"  > "$@"
+	$(CXX) -MM $(CXXFLAGS) "$<"  > "$@"
 $(C_DEPS): .%.d : %.c
-	gcc -MM $(CFLAGS) "$<"  > "$@"
+	$(CC) -MM $(CFLAGS) "$<"  > "$@"
 
 -include $(DEPS)
 
 librtti.so: librtti.cpp libreflect.so
-	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" -L. -Wl,-R$(realpath .) -lreflect 
+	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) -lreflect 
 libreflect.so: self-image.o
-	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" -L../lib -Wl,-R$(realpath ../lib) -lpmirror 
+	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) -lpmirror -lunwind-ptrace
 
 # First include the rules without the fancy CFLAGS.
 # This builds a lean, mean set of hooks libraries.
@@ -39,7 +40,7 @@ libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
 
 libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
-	gcc $(LDFLAGS) -shared -pg -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) $(CFLAGS) "$<"
+	gcc $(LDFLAGS) -shared -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) $(CFLAGS) "$<"
 
 # Now add the fancy CFLAGS for the libpmirror type-aware
 # hooks.
@@ -51,7 +52,7 @@ libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 # But this has to be available early enough that the very first mallocs get it.
 # UNLESS we store the padding size in the trailer! This sounds good.
 libpmirror.so: $(CPP_OBJS) | libheap_index_fast_hooks.so #heap_index_hooks_with_type.o
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind -lunwind-$$(uname -m) -lunwind-ptrace -ldl -L. -Wl,-R$$(pwd) #-lheap_index_fast_hooks #-ldwarf 
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind-$$(uname -m) -lunwind-ptrace -lunwind -ldl -L. -Wl,-R$$(pwd) #-lheap_index_fast_hooks #-ldwarf 
 
 heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(CFLAGS) -c -o "$@" "$<"

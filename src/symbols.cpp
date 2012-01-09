@@ -88,7 +88,7 @@ process_image::sym_binding_t resolve_symbol_from_process_image(
 	 	std::pair<process_image *, process_image::files_iterator> *>(p_pair_void);
 	auto syms = p_pair->first->symbols(p_pair->second);
 	
-	for (auto i_sym = syms.first; i_sym != syms.second; i_sym++)
+	for (auto i_sym = syms.first; i_sym != syms.second; ++i_sym)
 	{
 		if ((i_sym->st_value == 0) ||
 			(GELF_ST_BIND(i_sym->st_info)== STB_WEAK) ||
