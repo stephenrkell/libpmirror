@@ -101,7 +101,7 @@ void process_image::inform_heap_object_descr(
 	informed_heap_descrs.insert(std::make_pair(addr, descr));
 }
 
-/* static */ const char *process_image::alloc_list_lib_basename = "libprocessimage.so";
+/* static */ const char *process_image::alloc_list_lib_basename = "libpmirror.so";
 /* static */ /* const char *process_image::alloc_list_symname = "__cake_alloc_list_head";  */
 
 } // end namespace pmirror
