@@ -54,7 +54,7 @@ process_image::discover_object_descr(addr_t addr,
 		case STACK: {
 			// DEBUG: dump the stack first
 			walk_stack(NULL, stack_print_handler, 0);
-			auto discovered_obj = discover_stack_object(addr, out_object_start_addr);
+			auto discovered_obj = discover_stack_object(addr, out_object_start_addr, 0, 0);
 			if (discovered_obj && discovered_obj->get_type()) 
 			{
 				return discovered_obj->get_type();

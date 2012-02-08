@@ -24,30 +24,42 @@ using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
 boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
-process_image::discover_stack_object(addr_t addr, addr_t *out_object_start_addr/*,
-	unw_word_t top_frame_sp, unw_word_t top_frame_ip, unw_word_t top_frame_retaddr,
-    const char *top_frame_fn_name*/)
+process_image::discover_stack_object(
+	addr_t addr, 
+	addr_t *out_object_start_addr,
+	addr_t *out_frame_base,
+	addr_t *out_frame_return_addr
+	)
 {
     if (m_pid == getpid())
     {
     	/* use the local version */
-        return discover_stack_object_local(addr, out_object_start_addr);
+        return discover_stack_object_local(addr, out_object_start_addr, 
+			out_frame_base, out_frame_return_addr);
     }
     else
     {
     	/* use the remote version */
-        return discover_stack_object_remote(addr, out_object_start_addr);
+        return discover_stack_object_remote(addr, out_object_start_addr,
+			out_frame_base, out_frame_return_addr);
     }
 }
 
 boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
-process_image::discover_stack_object_local(addr_t addr, addr_t *out_object_start_addr)
+process_image::discover_stack_object_local(
+	addr_t addr, 
+	addr_t *out_object_start_addr,
+	addr_t *out_frame_base,
+	addr_t *out_frame_return_addr
+)
 {
 	stack_object_discovery_handler_arg arg
-     = {addr, boost::shared_ptr<dwarf::spec::with_dynamic_location_die>(), 0};
+     = {addr, boost::shared_ptr<dwarf::spec::with_dynamic_location_die>(), 0, 0, 0};
 	walk_stack(NULL, stack_object_discovery_handler, &arg);
-    // forward output argument
+    // forward output arguments
     if (out_object_start_addr) *out_object_start_addr = arg.object_start_addr;
+	if (out_frame_base) *out_frame_base = arg.frame_base;
+	if (out_frame_return_addr) *out_frame_return_addr = arg.frame_return_addr;
     // extract and return return value
     return arg.discovered_die;
 }
@@ -56,6 +68,7 @@ int stack_print_handler(process_image *image,
 		unw_word_t frame_sp, unw_word_t frame_ip, 
 		const char *frame_proc_name,
 		unw_word_t frame_caller_sp,
+		unw_word_t frame_caller_ip,
 		unw_word_t frame_callee_ip,
         unw_cursor_t frame_cursor,
         unw_cursor_t frame_callee_cursor,
@@ -73,6 +86,7 @@ int stack_object_discovery_handler(process_image *image,
 		unw_word_t frame_sp, unw_word_t frame_ip, 
 		const char *frame_proc_name,
 		unw_word_t frame_caller_sp,
+		unw_word_t frame_caller_ip,
 		unw_word_t frame_callee_ip,
         unw_cursor_t frame_cursor,
         unw_cursor_t frame_callee_cursor,
@@ -80,7 +94,7 @@ int stack_object_discovery_handler(process_image *image,
 {
 	// DEBUG: print the frame
 	stack_print_handler(image, frame_sp, frame_ip, frame_proc_name, 
-    	frame_caller_sp, frame_callee_ip, 
+    	frame_caller_sp, frame_caller_ip, frame_callee_ip, 
         frame_cursor, frame_callee_cursor,
         0);
     
@@ -88,7 +102,7 @@ int stack_object_discovery_handler(process_image *image,
     struct stack_object_discovery_handler_arg *arg_obj 
      = reinterpret_cast<stack_object_discovery_handler_arg *>(arg);
     process_image::addr_t addr = arg_obj->addr;
-        
+ 
     // now do the stuff
     if (addr <= (frame_caller_sp - sizeof (int))
         && addr >= frame_sp)
@@ -119,42 +133,44 @@ int stack_object_discovery_handler(process_image *image,
 		}
 		else
 		{
-        	process_image::addr_t dieset_base = image->get_dieset_base(callee_subp->get_ds());
-        	unw_word_t dieset_relative_ip = frame_callee_ip - dieset_base;
-        	//unw_word_t dieset_relative_addr = reinterpret_cast<unw_word_t>(addr)
-        	// - reinterpret_cast<unw_word_t>(dieset_base);
-        	libunwind_regs my_regs(&frame_callee_cursor); 
-        	dwarf::lib::Dwarf_Signed frame_base;
-        	// warn about variadic omission
-        	if (callee_subp->is_variadic())
-        	{
+			process_image::addr_t dieset_base = image->get_dieset_base(callee_subp->get_ds());
+			unw_word_t dieset_relative_ip = frame_callee_ip - dieset_base;
+			//unw_word_t dieset_relative_addr = reinterpret_cast<unw_word_t>(addr)
+			// - reinterpret_cast<unw_word_t>(dieset_base);
+			libunwind_regs my_regs(&frame_callee_cursor); 
+			dwarf::lib::Dwarf_Signed frame_base;
+			// warn about variadic omission
+			if (callee_subp->is_variadic())
+			{
 				std::cerr << "Warning: unwinding varargs frame at bp=0x" // HACK: we don't get 
-					<< std::hex << frame_sp << std::dec                  // the callee sp, so quote
+					<< std::hex << frame_sp << std::dec				  // the callee sp, so quote
 					<< "; object discovery may miss objects in this frame."   // current sp as callee bp
 					<< std::endl;
-        	}
-        	auto ret = callee_subp->contains_addr_as_frame_local_or_argument(
-        		addr,
-            	static_cast<dwarf::lib::Dwarf_Off>(dieset_relative_ip), 
-            	&frame_base,
-            	&my_regs);
-        	if (ret) 
-        	{
-        		arg_obj->discovered_die = ret->second;
-            	// ret.first is the number of bytes that addr was offset into the pointed-to local/arg
-            	arg_obj->object_start_addr = addr - ret->first;
-        		return 1; // 1 means "can stop now"
-        	}
+			}
+			auto ret = callee_subp->contains_addr_as_frame_local_or_argument(
+				addr,
+				static_cast<dwarf::lib::Dwarf_Off>(dieset_relative_ip), 
+				&frame_base,
+				&my_regs);
+			if (ret) 
+			{
+				arg_obj->discovered_die = ret->second;
+				// ret.first is the number of bytes that addr was offset into the pointed-to local/arg
+				arg_obj->object_start_addr = addr - ret->first;
+				arg_obj->frame_base = frame_base;
+				arg_obj->frame_return_addr = frame_ip; // because callee is the logical frame
+				return 1; // 1 means "can stop now"
+			}
 			else std::cerr << "Did not match an actual parameter -- must be local variable." << std::endl;
 		}
-    }
-    // if we got here, look for a local of the current frame
-    auto frame_subp = image->find_subprogram_for_absolute_ip(frame_ip);
-    if (!frame_subp)
+	}
+	// if we got here, look for a local of the current frame
+	auto frame_subp = image->find_subprogram_for_absolute_ip(frame_ip);
+	if (!frame_subp)
 	{
-		std::cerr << "Warning: no debug info at bp=0x"           // HACK: we don't get 
-			<< std::hex << frame_caller_sp << std::dec           // the callee sp, so quote
-			<< "; object discovery may miss argument objects."   // current sp as callee bp
+		std::cerr << "Warning: no debug info at bp=0x"			// HACK: we don't get 
+			<< std::hex << frame_caller_sp << std::dec			// the callee sp, so quote
+			<< "; object discovery may miss argument objects."	// current sp as callee bp
 			<< std::endl;
 		return 0;
 	}
@@ -174,6 +190,8 @@ int stack_object_discovery_handler(process_image *image,
         arg_obj->discovered_die = ret->second;
         // ret.first is the number of bytes that addr was offset into the pointed-to local/arg
         arg_obj->object_start_addr = addr - ret->first;
+		arg_obj->frame_base = frame_base;
+		arg_obj->frame_return_addr = frame_caller_ip; 
         return 1; // 1 means "can stop now"
     }
 	else std::cerr << "Did not match a local variable -- giving up." << std::endl;
@@ -184,22 +202,22 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 {
 	// FIXME: make cross-process-capable, and support multiple stacks
 	unw_cursor_t cursor, saved_cursor, prev_saved_cursor;
-    int unw_ret;
-    unw_ret = unw_getcontext(&this->unw_context);
+    int unw_ret = unw_ret = unw_getcontext(&this->unw_context);
     unw_init_local(&cursor, /*this->unw_as,*/ &this->unw_context);
     
-	unw_word_t prevframe_sp = 0, sp/*, prevframe_ip = 0*/, callee_ip;
+	unw_word_t higherframe_sp = 0, sp, higherframe_ip = 0, callee_ip;
     
 	// sanity check
-    unw_word_t check_prevframe_sp;
+    unw_word_t check_higherframe_sp;
 #ifdef UNW_TARGET_X86
-    __asm__ ("movl %%esp, %0\n" :"=r"(check_prevframe_sp));
+    __asm__ ("movl %%esp, %0\n" :"=r"(check_higherframe_sp));
 #else // assume X86_64 for now
-	__asm__("movq %%rsp, %0\n" : "=r"(check_prevframe_sp));
+	__asm__("movq %%rsp, %0\n" : "=r"(check_higherframe_sp));
 #endif
-    unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &prevframe_sp);
-    assert(check_prevframe_sp == prevframe_sp);
-    std::cerr << "Initial sp=0x" << std::hex << prevframe_sp << std::endl;
+    unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &higherframe_sp);
+    assert(check_higherframe_sp == higherframe_sp);
+    std::cerr << "Initial sp=0x" << std::hex << higherframe_sp << std::endl;
+    unw_ret = unw_get_reg(&cursor, UNW_REG_IP, &higherframe_ip);
     
     unw_word_t ip = 0;
 	int step_ret;
@@ -224,16 +242,16 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
         
     	/* First get the ip, sp and symname of the current stack frame. */
         unw_ret = unw_get_reg(&cursor, UNW_REG_IP, &ip); assert(unw_ret == 0);
-        unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &sp); assert(unw_ret == 0); // sp = prevframe_sp
+        unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &sp); assert(unw_ret == 0); // sp = higherframe_sp
         unw_ret = unw_get_proc_name(&cursor, name, 100, NULL); 
         if (unw_ret != 0) strncpy(name, "(no name)", 100);
-        /* Now get the sp of the previous stack frame, 
+        /* Now get the sp of the next higher stack frame, 
          * i.e. the bp of the current frame. N
          
          * NOTE: we're still
          * processing the stack frame ending at sp, but we
          * hoist the unw_step call to here so that we can get
-         * the bp of the previous frame (without demanding that
+         * the bp of the next higher frame (without demanding that
          * libunwind provides bp, e.g. for code compiled with
          * -fomit-frame-pointer -- FIXME: does this work?). 
          * This means "cursor" is no longer current -- use 
@@ -242,25 +260,36 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
         int step_ret = unw_step(&cursor);
         if (step_ret > 0)
         {
-        	unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &prevframe_sp); assert(unw_ret == 0);
-        	//unw_ret = unw_get_reg(&cursor, UNW_REG_IP, &prevframe_ip); assert(unw_ret == 0);
+        	unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &higherframe_sp); assert(unw_ret == 0);
+        	unw_ret = unw_get_reg(&cursor, UNW_REG_IP, &higherframe_ip); assert(unw_ret == 0);
         }
         else if (step_ret == 0)
         {
-        	prevframe_sp = BEGINNING_OF_STACK;
-            //prevframe_ip = 0x0;
+        	higherframe_sp = BEGINNING_OF_STACK;
+            higherframe_ip = 0x0;
         }
         else
         {
         	assert(false); // what does a retval < 0 mean?
         }
         
-        ret = handler(this, sp, ip, name, prevframe_sp, callee_ip, 
-        	saved_cursor, prev_saved_cursor, handler_arg); 
+        ret = handler(
+		/* process_image *image             */ this,
+		/* unw_word_t frame_sp              */ sp,
+		/* unw_word_t frame_ip              */ ip,
+		/* const char *frame_proc_name      */ name,
+		/* unw_word_t frame_caller_sp       */ higherframe_sp,
+		/* unw_word_t frame_caller_ip       */ higherframe_ip,
+		/* unw_word_t frame_callee_ip       */ callee_ip,
+		/* unw_cursor_t frame_cursor        */ saved_cursor,
+		/* unw_cursor_t frame_callee_cursor */ prev_saved_cursor,
+		/* void *arg                        */ handler_arg
+		);
+		
         if (ret == 1) break;
-       
-        assert(step_ret > 0 || prevframe_sp == BEGINNING_OF_STACK);
-    } while (ret == 0 && prevframe_sp != BEGINNING_OF_STACK);
+
+        assert(step_ret > 0 || higherframe_sp == BEGINNING_OF_STACK);
+    } while (ret == 0 && higherframe_sp != BEGINNING_OF_STACK);
     return ret; //boost::shared_ptr<dwarf::spec::basic_die>();
 #undef BEGINNING_OF_STACK
 }
@@ -280,7 +309,12 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 // }
 
 boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
-process_image::discover_stack_object_remote(addr_t addr, addr_t *out_object_start_addr)
+process_image::discover_stack_object_remote(
+	addr_t addr, 
+	addr_t *out_object_start_addr,
+	addr_t *out_frame_base,
+	addr_t *out_frame_return_addr
+)
 {
 	assert(false);
 	return boost::shared_ptr<dwarf::spec::with_dynamic_location_die>();
