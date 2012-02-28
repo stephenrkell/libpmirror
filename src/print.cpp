@@ -36,8 +36,10 @@ ostream& process_image::print_object(ostream& s, void *obj) const
 			struct trailer *tr = lookup_object_info(obj, &obj_start);
 			assert(tr);
 			s << "pointer " << obj << " into object starting at " << obj_start
-				<< " size " << malloc_usable_size(obj_start) << ", allocated at "
-				<< tr->alloc_site << endl;
+#ifndef NO_MALLOC_USABLE_SIZE
+				<< " size " << malloc_usable_size(obj_start) 
+#endif
+				<< ", allocated at " << tr->alloc_site << endl;
 			return s;
 		}
 		case memory_kind::STATIC:
