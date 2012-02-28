@@ -32,7 +32,9 @@ using dwarf::spec::compile_unit_die;
 #ifdef NO_LIBUNWIND
 /* We define some fake libunwind stuff here. */
 #include "libreflect.hpp"
+long local_addr_space;
 unw_addr_space_t unw_local_addr_space = &local_addr_space;
+struct accessors local_accessors = { &access_mem };
 int fake_get_proc_name(void *eip, char *buf, size_t n)
 {
 	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);

@@ -12,14 +12,14 @@ extern "C" {
 #define UNW_TARGET_X86
 typedef unsigned long unw_word_t;
 typedef void *unw_addr_space_t;
-struct {} local_addr_space;
+extern long local_addr_space;
 extern unw_addr_space_t unw_local_addr_space;
 struct accessors
 {
 	int (*access_mem) (unw_addr_space_t as, unw_word_t addr, unw_word_t *data, int dir, void *priv);
 };
 typedef accessors unw_accessors_t;
-int access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *data,int dir, void *priv)
+inline int access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *data,int dir, void *priv)
 {
 	if (dir == 0) /* 0 means read */
 		 *(void**)data = *(void **)addr;
@@ -28,7 +28,7 @@ int access_mem (unw_addr_space_t as, unw_word_t addr, unw_word_t *data,int dir, 
 	else return 1;
 	return 0;
 }
-struct accessors local_accessors = { &access_mem };
+extern struct accessors local_accessors;
 inline struct accessors *unw_get_accessors(unw_addr_space_t as)
 {
 	return &local_accessors;
