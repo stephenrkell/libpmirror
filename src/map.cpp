@@ -19,6 +19,10 @@
 #define ELF_MAX_SEGMENTS 50
 #endif
 
+#ifndef MAXPATHLEN
+#define MAXPATHLEN PATH_MAX
+#endif
+
 #include <srk31/ordinal.hpp>
 
 namespace pmirror {
@@ -30,8 +34,10 @@ using std::cerr;
 using std::endl;
 using std::pair;
 using std::make_pair;
+using std::map;
 
 using boost::dynamic_pointer_cast;
+using boost::optional;
 using boost::shared_ptr;
 
 using dwarf::spec::basic_die;
@@ -228,6 +234,7 @@ process_image::addr_t process_image::get_dieset_base(dwarf::lib::abstract_dieset
 
 const char *process_image::ANONYMOUS_REGION_FILENAME = /*"[anon]"*/ "";
 
+#ifndef NO_DL_ITERATE_PHDR
 struct callback_in_out
 {
 	const char *name_in;
@@ -248,6 +255,7 @@ static int phdr_callback(struct dl_phdr_info *info, size_t size, void *data)
     }
     else return 0; // 0 means "carry on searching"
 }
+#endif
 process_image::addr_t process_image::get_library_base(const std::string& path)
 {
 	char real_path[PATH_MAX]; 
@@ -280,22 +288,63 @@ process_image::addr_t process_image::get_library_base_local(const std::string& p
     if (retval)
     {
     	// result -- we found the library
-        addr_t library_base = reinterpret_cast<addr_t>(obj.load_addr_out);
-        return library_base;
+    	addr_t library_base = reinterpret_cast<addr_t>(obj.load_addr_out);
+    	return library_base;
     }
     else
     {
-    	// not a result: didn't find the library
+		// not a result: didn't find the library
 		std::cerr << "Warning: failed to find library for some DIE..." << std::endl;
-    	return 0;
+		return 0;
 	}
 #else /* fall back on /proc version */
-	return get_library_base_remote(path);
+	return get_library_base_procfs(path);
+}
+
+process_image::addr_t process_image::get_library_base_procfs(const std::string& path)
+{
+	char arg_realpath[MAXPATHLEN];
+	char *realpath_ret = realpath(path.c_str(), arg_realpath);
+	assert(realpath_ret);
+
+	auto found = std::find_if(
+		objects.begin(),
+		objects.end(), 
+		[arg_realpath](const pair<entry_key, entry>& ent)
+		{
+			if (ent.second.seg_descr.length() > 0
+				&& ent.second.seg_descr[0] == '/')
+			{
+				char ent_realpath[MAXPATHLEN];
+
+				// it's a filename; is it our file?
+				char *realpath_ret = realpath(ent.second.seg_descr.c_str(), ent_realpath);
+				assert(realpath_ret);
+				if (string(ent_realpath) == string(arg_realpath))
+				{
+					// is this an executable segment?
+					return ent.second.x == 'x';
+				} else return false;
+			}
+			else return false;
+		}
+	);
+
+	if (found == objects.end())
+	{
+		std::cerr << "Warning: failed to find library for some DIE..." << std::endl;
+		return 0;
+	}
+	else
+	{
+		return found->first.first; // initial addr
+	}
 #endif
 }
 
 void process_image::update_rdbg()
 {
+#ifndef NO_DL_ITERATE_PHDR
 	void *dyn_addr = 0;
 	GElf_Ehdr ehdr;
 	if (this->executable_elf != NULL 
@@ -377,10 +426,12 @@ void process_image::update_rdbg()
 			assert(false);
 		}
 	}
+#endif
 }
 
 process_image::addr_t process_image::get_library_base_remote(const std::string& path)
 {
+#ifndef NO_DL_ITERATE_PHDR
 	update_rdbg();
     /* Now crawl the link map. */
     /* struct link_map rlm; */
@@ -409,6 +460,9 @@ process_image::addr_t process_image::get_library_base_remote(const std::string& 
         if (path == name) return p_lm->l_addr;
 	}
     return 0;
+#else
+	return get_library_base_procfs(path);
+#endif
 }
     
 void process_image::register_anon_segment_description(addr_t base, 
@@ -451,9 +505,12 @@ struct realpath_file_entry_cmp
     }
 };
 std::map<std::string, process_image::file_entry>::iterator 
-process_image::find_file_by_realpath(const std::string& path)
+process_image::find_file_by_realpath(
+	const std::string& path, 
+	optional< map<string, process_image::file_entry>::iterator> begin_here
+)
 {
-	return std::find_if(this->files.begin(), this->files.end(), 
+	return std::find_if(begin_here ? *begin_here : this->files.begin(), this->files.end(), 
     	realpath_file_entry_cmp(path.c_str()));
 }
 

@@ -11,6 +11,7 @@
 #include <link.h>
 
 #include <boost/shared_ptr.hpp>
+#include <boost/optional.hpp>
 #include <boost/graph/graph_traits.hpp>
 #include <boost/iterator_adaptors.hpp>
 
@@ -143,7 +144,9 @@ private:
 	unw_accessors_t unw_accessors;
 	void *unw_priv;
 	unw_context_t unw_context;
+#ifndef NO_DL_ITERATE_PHDR
 	r_debug rdbg;
+#endif
 	vector<string> seen_map_lines;
 	files_iterator i_executable; // points to the files entry representing the executable
 	
@@ -205,7 +208,11 @@ public:
     void update();
     ~process_image() { if (executable_elf) elf_end(executable_elf); }
     
-    map<string, file_entry>::iterator find_file_by_realpath(const string& path);
+	map<string, file_entry>::iterator find_file_by_realpath(
+		const string& path,
+		optional<map<string, file_entry>::iterator> begin_here = 
+			optional<map<string, file_entry>::iterator>()
+	);
     memory_kind discover_object_memory_kind(addr_t addr) const;
     addr_t get_dieset_base(abstract_dieset& ds);
     addr_t get_library_base(const string& path);
@@ -243,6 +250,7 @@ private:
 
     addr_t get_library_base_local(const string& path);
     addr_t get_library_base_remote(const string& path);
+    addr_t get_library_base_procfs(const string& path);
     bool rebuild_map();
     void update_rdbg();
     void update_i_executable();
