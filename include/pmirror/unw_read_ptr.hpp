@@ -1,8 +1,12 @@
 #ifndef PMIRROR_UNW_READ_PTR_HPP_
 #define PMIRROR_UNW_READ_PTR_HPP_
 
+#ifndef NO_LIBUNWIND
 #include <libunwind.h>
 #include <libunwind-ptrace.h>
+#else
+#include "fake-libunwind.h"
+#endif
 
 namespace pmirror {
 

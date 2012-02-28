@@ -21,8 +21,13 @@
 #include <dwarfpp/lib.hpp>
 #include <dwarfpp/adt.hpp>
 
+#ifndef NO_LIBUNWIND
 #include <libunwind.h>
 #include <libunwind-ptrace.h>
+#else
+/* libunwind substitues go here */
+#include "fake-libunwind.h"
+#endif
 
 #include <srk31/algorithm.hpp> // from libsrk31c++
 #include <srk31/conjoining_iterator.hpp>
@@ -196,28 +201,7 @@ public:
 	find_most_specific_die_for_absolute_addr(addr_t addr)
 	{ return find_containing_die_for_absolute_addr(addr, true); }
 
-    process_image(pid_t pid = -1) 
-    : m_pid(pid == -1 ? getpid() : pid),
-      unw_as(pid == -1 ? 
-      	unw_local_addr_space : 
-        unw_create_addr_space(&_UPT_accessors/*&unw_accessors*/, 0)),
-        executable_elf(0)/*,
-		master_type_containment(*this)*/
-    {
-    	int retval = unw_getcontext(&unw_context);
-        assert(retval == 0);
-    	if (pid == -1)
-        {
-        	unw_accessors = *unw_get_accessors(unw_local_addr_space);
-            unw_priv = 0;
-        }
-        else 
-        {
-        	unw_accessors = _UPT_accessors;
-        	unw_priv = _UPT_create(m_pid);
-	    }
-    	update();
-    }
+    process_image(pid_t pid = -1);
     void update();
     ~process_image() { if (executable_elf) elf_end(executable_elf); }
     

@@ -52,6 +52,37 @@ using dwarf::spec::variable_die;
 using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
+process_image::process_image(pid_t pid /* = -1 */)
+#ifndef NO_LIBUNWIND 
+	: 	m_pid(pid == -1 ? getpid() : pid),
+		unw_as(pid == -1 ? 
+		unw_local_addr_space : 
+		unw_create_addr_space(&_UPT_accessors/*&unw_accessors*/, 0)),
+#else /* special versions */
+	m_pid(assert(pid == -1), -1),
+	unw_as(unw_local_addr_space),
+#endif
+		executable_elf(0)/*,
+		master_type_containment(*this)*/
+{
+	int retval = unw_getcontext(&unw_context);
+	assert(retval == 0);
+	if (pid == -1)
+	{
+		unw_accessors = *unw_get_accessors(unw_local_addr_space);
+		unw_priv = 0;
+	}
+	else 
+	{
+#ifndef NO_LIBUNWIND
+		unw_accessors = _UPT_accessors;
+		unw_priv = _UPT_create(m_pid);
+#else
+		assert(false);
+#endif
+	}
+	update();
+}
 
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */

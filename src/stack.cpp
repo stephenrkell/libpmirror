@@ -3,6 +3,89 @@
 #include <sstream>
 #include <cstring>
 
+/* define BEGINNING_OF_STACK  -- note that this is just a sentinel and doesn't have 
+ * to be accurate! Let's make sure it's at least as high as the first stack loc though. */
+#ifdef UNW_TARGET_X86
+#define BEGINNING_OF_STACK 0xbfffffff
+#else // assume X86_64 for now
+#define BEGINNING_OF_STACK 0x7fffffffffff
+#endif
+
+#ifdef NO_LIBUNWIND
+/* We define some fake libunwind stuff here. */
+#include "libreflect.hpp"
+int fake_get_proc_name(void *eip, char *buf, size_t n)
+{
+	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);
+	if (!found) return 1;
+	if (!found->get_name()) return 2;
+	else 
+	{
+		string name = *found->get_name();
+		name.copy(buf, n);
+		return 0;
+	}
+}
+int fake_getcontext(unw_context_t *ucp)
+{
+	unw_word_t current_bp, old_bp;
+	unw_word_t current_return_addr;
+	current_return_addr = (unw_word_t)
+		__builtin_extract_return_address(
+			__builtin_return_address(0)
+		);
+	__asm__ ("movl %%ebp, %0\n" :"=r"(current_bp));
+	/* We get the old break pointer by dereferencing the addr found at 0(%ebp) */
+	old_bp = (unw_word_t) *reinterpret_cast<void **>(current_bp);
+	return (unw_context_t){ 
+		/* context sp = */ current_bp, 
+		/* context bp = */ old_bp, 
+		/* context ip = */ current_return_addr
+	};
+}
+
+extern unsigned long end; 
+
+int fake_step(unw_cursor_t *cp)
+{
+	/*
+       On successful completion, unw_step() returns a positive  value  if  the
+       updated  cursor  refers  to  a  valid stack frame, or 0 if the previous
+       stack frame was the last frame in the chain.  On  error,  the  negative
+       value of one of the error-codes below is returned.
+	*/
+	
+	unw_context_t ctxt = *cp;
+	
+	// the next-higher ip is the return addr of the frame, i.e. 4(%eip)
+	void *return_addr = *(reinterpret_cast<void **>(ctxt->frame_ebp) + 1);
+	
+	unw_context_t new_ctxt = (unw_context_t){ 
+		/* context sp = */ ctxt->frame_ebp,
+		/* context bp = */ (unw_word_t) *reinterpret_cast<void **>(ctxt->frame_ebp),
+		/* context ip = */ return_addr
+	};
+		
+	// sanity check the results
+	if (new_ctxt.frame_esp >= BEGINNING_OF_STACK
+	||  new_ctxt.frame_esp <= end
+	||  new_ctxt.frame_ebp >= BEGINNING_OF_STACK
+	||  new_ctxt.frame_ebp <= end)
+	{
+		// looks dodgy -- say we failed
+		return -1;
+	}
+	// otherwise return the number of bytes we stepped up
+	else
+	{
+		*cp = new_ctxt;
+		return new_ctxt.frame_esp - ctxt->frame_esp;
+	}
+}
+
+
+#endif
+
 namespace pmirror {
 
 using namespace dwarf;
@@ -70,15 +153,15 @@ int stack_print_handler(process_image *image,
 		unw_word_t frame_caller_sp,
 		unw_word_t frame_caller_ip,
 		unw_word_t frame_callee_ip,
-        unw_cursor_t frame_cursor,
-        unw_cursor_t frame_callee_cursor,
-        void *arg)
+		unw_cursor_t frame_cursor,
+		unw_cursor_t frame_callee_cursor,
+		void *arg)
 {
-    std::cerr << "Found a frame, ip=0x" << std::hex << frame_ip
-        << ", sp=0x" << std::hex << frame_sp 
-        << ", bp=0x" << std::hex << frame_caller_sp  << std::dec
-        //<< ", return_addr=0x" << std::hex << prevframe_ip
-        << ", name: " << frame_proc_name << std::endl;
+	std::cerr << "Found a frame, ip=0x" << std::hex << frame_ip
+		<< ", sp=0x" << std::hex << frame_sp 
+		<< ", bp=0x" << std::hex << frame_caller_sp  << std::dec
+		//<< ", return_addr=0x" << std::hex << prevframe_ip
+		<< ", name: " << frame_proc_name << std::endl;
 	return 0; // should we stop? no, carry on
 }
 
@@ -94,36 +177,36 @@ int stack_object_discovery_handler(process_image *image,
 {
 	// DEBUG: print the frame
 	stack_print_handler(image, frame_sp, frame_ip, frame_proc_name, 
-    	frame_caller_sp, frame_caller_ip, frame_callee_ip, 
-        frame_cursor, frame_callee_cursor,
-        0);
-    
-    // unpack our argument object 
-    struct stack_object_discovery_handler_arg *arg_obj 
-     = reinterpret_cast<stack_object_discovery_handler_arg *>(arg);
-    process_image::addr_t addr = arg_obj->addr;
- 
-    // now do the stuff
-    if (addr <= (frame_caller_sp - sizeof (int))
-        && addr >= frame_sp)
-    {
-        std::cerr << "Variable at 0x" << std::hex << addr << std::dec
-        	<< " appears to be in frame " << frame_proc_name 
+		frame_caller_sp, frame_caller_ip, frame_callee_ip, 
+		frame_cursor, frame_callee_cursor,
+		0);
+
+	// unpack our argument object 
+	struct stack_object_discovery_handler_arg *arg_obj 
+	 = reinterpret_cast<stack_object_discovery_handler_arg *>(arg);
+	process_image::addr_t addr = arg_obj->addr;
+
+	// now do the stuff
+	if (addr <= (frame_caller_sp - sizeof (int))
+		&& addr >= frame_sp)
+	{
+		std::cerr << "Variable at 0x" << std::hex << addr << std::dec
+			<< " appears to be in frame " << frame_proc_name 
 			<< ", ip=0x" << std::hex << frame_ip << std::dec << std::endl;
-    }
+	}
 	else return 0; // keep going
 
-    /* If a variable "appears to be" in a frame X, it might actually
-     * be an actual parameter of the current *callee* of X, rather than
-     * a local of X.
-     * Actual parameters appear to be in the caller's frame, because they
-     * come before the break pointer (i.e. higher up in memory). To fix this, 
-     * get the debug info for the current ip, and test against the formal
-     * parameters. */
-    if (frame_callee_ip != 0)
-    {
-        auto callee_subp = image->find_subprogram_for_absolute_ip(frame_callee_ip);
-        if(!callee_subp)
+	/* If a variable "appears to be" in a frame X, it might actually
+	 * be an actual parameter of the current *callee* of X, rather than
+	 * a local of X.
+	 * Actual parameters appear to be in the caller's frame, because they
+	 * come before the break pointer (i.e. higher up in memory). To fix this, 
+	 * get the debug info for the current ip, and test against the formal
+	 * parameters. */
+	if (frame_callee_ip != 0)
+	{
+		auto callee_subp = image->find_subprogram_for_absolute_ip(frame_callee_ip);
+		if(!callee_subp)
 		{
 			std::cerr << "Warning: no debug info at bp=0x"           // HACK: we don't get 
 				<< std::hex << frame_sp << std::dec           // the callee sp, so quote
@@ -225,13 +308,6 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
     
     int ret; // value returned by handler
 
-/* define BEGINNING_OF_STACK  -- note that this is just a sentinel and doesn't have 
- * to be accurate! Let's make sure it's at least as high as the first stack loc though. */
-#ifdef UNW_TARGET_X86
-#define BEGINNING_OF_STACK 0xbfffffff
-#else // assume X86_64 for now
-#define BEGINNING_OF_STACK 0x7fffffffffff
-#endif
     do
     {
         callee_ip = ip;
