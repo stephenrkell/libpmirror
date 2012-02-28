@@ -333,7 +333,8 @@ public:
         addr_t *out_object_start_addr);
 	
 	std::ostream& print_object(std::ostream& s, void *obj) const;
-	
+
+#ifndef NO_DL_ITERATE_PHDR
     std::pair<GElf_Shdr, GElf_Phdr> get_static_memory_elf_headers(addr_t addr);
     // various ELF conveniences
     bool is_linker_code(addr_t addr)
@@ -343,6 +344,7 @@ public:
          && kind.second.p_type == PT_LOAD
          && (kind.second.p_flags & PF_X);
     }
+#endif
     string nearest_preceding_symbol(addr_t addr); // FIXME: implement this
 
 	struct symbols_iteration_state

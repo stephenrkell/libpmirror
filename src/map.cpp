@@ -514,6 +514,7 @@ process_image::find_file_by_realpath(
     	realpath_file_entry_cmp(path.c_str()));
 }
 
+#ifndef NO_DL_ITERATE_PHDR
 std::pair<GElf_Shdr, GElf_Phdr> process_image::get_static_memory_elf_headers(addr_t addr)
 {
 	assert(this->executable_elf != NULL 
@@ -576,5 +577,6 @@ std::pair<GElf_Shdr, GElf_Phdr> process_image::get_static_memory_elf_headers(add
     // call didn't respect precondition
     assert(false);
 }
+#endif
 
 } // end namespace pmirror
