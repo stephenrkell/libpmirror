@@ -59,10 +59,10 @@ process_image::process_image(pid_t pid /* = -1 */)
 		unw_local_addr_space : 
 		unw_create_addr_space(&_UPT_accessors/*&unw_accessors*/, 0)),
 #else /* special versions */
-	m_pid(assert(pid == -1), -1),
-	unw_as(unw_local_addr_space),
+	:	m_pid((assert(pid == -1), -1)),
+		unw_as(unw_local_addr_space),
 #endif
-		executable_elf(0)/*,
+		executable_elf(((Elf*)0))/*,
 		master_type_containment(*this)*/
 {
 	int retval = unw_getcontext(&unw_context);

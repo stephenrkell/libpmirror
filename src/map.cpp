@@ -268,6 +268,7 @@ process_image::addr_t process_image::get_library_base(const std::string& path)
 
 process_image::addr_t process_image::get_library_base_local(const std::string& path)
 {
+#ifndef NO_DL_ITERATE_PHDR
     callback_in_out obj = { path.c_str()/*"libcake.so"*/, 0 };
     /* dl_iterate_phdr doesn't include the executable in its
      * list, so if we're looking for that, short-cut. */
@@ -288,6 +289,9 @@ process_image::addr_t process_image::get_library_base_local(const std::string& p
 		std::cerr << "Warning: failed to find library for some DIE..." << std::endl;
     	return 0;
 	}
+#else /* fall back on /proc version */
+	return get_library_base_remote(path);
+#endif
 }
 
 void process_image::update_rdbg()

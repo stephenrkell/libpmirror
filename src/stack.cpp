@@ -11,83 +11,6 @@
 #define BEGINNING_OF_STACK 0x7fffffffffff
 #endif
 
-#ifdef NO_LIBUNWIND
-/* We define some fake libunwind stuff here. */
-#include "libreflect.hpp"
-int fake_get_proc_name(void *eip, char *buf, size_t n)
-{
-	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);
-	if (!found) return 1;
-	if (!found->get_name()) return 2;
-	else 
-	{
-		string name = *found->get_name();
-		name.copy(buf, n);
-		return 0;
-	}
-}
-int fake_getcontext(unw_context_t *ucp)
-{
-	unw_word_t current_bp, old_bp;
-	unw_word_t current_return_addr;
-	current_return_addr = (unw_word_t)
-		__builtin_extract_return_address(
-			__builtin_return_address(0)
-		);
-	__asm__ ("movl %%ebp, %0\n" :"=r"(current_bp));
-	/* We get the old break pointer by dereferencing the addr found at 0(%ebp) */
-	old_bp = (unw_word_t) *reinterpret_cast<void **>(current_bp);
-	return (unw_context_t){ 
-		/* context sp = */ current_bp, 
-		/* context bp = */ old_bp, 
-		/* context ip = */ current_return_addr
-	};
-}
-
-extern unsigned long end; 
-
-int fake_step(unw_cursor_t *cp)
-{
-	/*
-       On successful completion, unw_step() returns a positive  value  if  the
-       updated  cursor  refers  to  a  valid stack frame, or 0 if the previous
-       stack frame was the last frame in the chain.  On  error,  the  negative
-       value of one of the error-codes below is returned.
-	*/
-	
-	unw_context_t ctxt = *cp;
-	
-	// the next-higher ip is the return addr of the frame, i.e. 4(%eip)
-	void *return_addr = *(reinterpret_cast<void **>(ctxt->frame_ebp) + 1);
-	
-	unw_context_t new_ctxt = (unw_context_t){ 
-		/* context sp = */ ctxt->frame_ebp,
-		/* context bp = */ (unw_word_t) *reinterpret_cast<void **>(ctxt->frame_ebp),
-		/* context ip = */ return_addr
-	};
-		
-	// sanity check the results
-	if (new_ctxt.frame_esp >= BEGINNING_OF_STACK
-	||  new_ctxt.frame_esp <= end
-	||  new_ctxt.frame_ebp >= BEGINNING_OF_STACK
-	||  new_ctxt.frame_ebp <= end)
-	{
-		// looks dodgy -- say we failed
-		return -1;
-	}
-	// otherwise return the number of bytes we stepped up
-	else
-	{
-		*cp = new_ctxt;
-		return new_ctxt.frame_esp - ctxt->frame_esp;
-	}
-}
-
-
-#endif
-
-namespace pmirror {
-
 using namespace dwarf;
 /*using namespace dwarf::lib;*/ // omitted to remove Elf ambiguity
 using std::string;
@@ -105,6 +28,85 @@ using dwarf::spec::type_die;
 using dwarf::spec::variable_die;
 using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
+
+#ifdef NO_LIBUNWIND
+/* We define some fake libunwind stuff here. */
+#include "libreflect.hpp"
+unw_addr_space_t unw_local_addr_space = &local_addr_space;
+int fake_get_proc_name(void *eip, char *buf, size_t n)
+{
+	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);
+	if (!found) return 1;
+	if (!found->get_name()) return 2;
+	else 
+	{
+		string name = *found->get_name();
+		name.copy(buf, n);
+		return 0;
+	}
+}
+int fake_getcontext(unw_context_t *ucp)
+{
+	unw_word_t current_bp, old_bp;
+	unw_word_t current_return_addr;
+	current_return_addr = (unw_word_t)
+		/*__builtin_extract_return_address( */
+			__builtin_return_address(0/*)*/
+		);
+	__asm__ ("movl %%ebp, %0\n" :"=r"(current_bp));
+	/* We get the old break pointer by dereferencing the addr found at 0(%ebp) */
+	old_bp = (unw_word_t) *reinterpret_cast<void **>(current_bp);
+	*ucp = (unw_context_t){ 
+		/* context sp = */ current_bp, 
+		/* context bp = */ old_bp, 
+		/* context ip = */ current_return_addr
+	};
+	return 0;
+}
+
+extern unsigned long end; 
+
+int fake_step(unw_cursor_t *cp)
+{
+	/*
+       On successful completion, unw_step() returns a positive  value  if  the
+       updated  cursor  refers  to  a  valid stack frame, or 0 if the previous
+       stack frame was the last frame in the chain.  On  error,  the  negative
+       value of one of the error-codes below is returned.
+	*/
+	
+	unw_context_t ctxt = *cp;
+	
+	// the next-higher ip is the return addr of the frame, i.e. 4(%eip)
+	void *return_addr = *(reinterpret_cast<void **>(ctxt.frame_ebp) + 1);
+	
+	unw_context_t new_ctxt = (unw_context_t){ 
+		/* context sp = */ ctxt.frame_ebp,
+		/* context bp = */ (unw_word_t) *reinterpret_cast<void **>(ctxt.frame_ebp),
+		/* context ip = */ (unw_word_t) return_addr
+	};
+		
+	// sanity check the results
+	if (new_ctxt.frame_esp >= BEGINNING_OF_STACK
+	||  new_ctxt.frame_esp <= end
+	||  new_ctxt.frame_ebp >= BEGINNING_OF_STACK
+	||  new_ctxt.frame_ebp <= end)
+	{
+		// looks dodgy -- say we failed
+		return -1;
+	}
+	// otherwise return the number of bytes we stepped up
+	else
+	{
+		*cp = new_ctxt;
+		return new_ctxt.frame_esp - ctxt.frame_esp;
+	}
+}
+
+
+#endif
+
+namespace pmirror {
 
 boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object(
