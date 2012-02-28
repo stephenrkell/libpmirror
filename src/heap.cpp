@@ -50,6 +50,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 	
 	if (found != informed_heap_descrs.end())
 	{
+		if (out_object_start_addr) *out_object_start_addr = (addr_t) found->first;
 		return dynamic_pointer_cast<dwarf::spec::basic_die>(found->second);
 	}
 	else if (m_pid == getpid())
@@ -66,12 +67,25 @@ process_image::discover_heap_object(addr_t heap_loc,
 	}
 }
 
+/* Hard-coded table of allocation sites. */
+
 boost::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object_local(addr_t heap_loc,
 	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
 	addr_t *out_object_start_addr)
 {
-
+	/* 1. Get the allocation site from the memtable. */
+	assert(index_region);
+	struct trailer *ret = lookup_object_info(
+		(const void *)heap_loc, 
+		(void **) out_object_start_addr
+	);
+	if (!ret) return shared_ptr<dwarf::spec::basic_die>();
+	void *alloc_site = (void *) ret->alloc_site;
+	
+	/* 2. Guess what DWARF types were allocated at that allocation site. */
+	assert(false);
+	
 }
 
 boost::shared_ptr<dwarf::spec::basic_die> 

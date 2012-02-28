@@ -9,6 +9,8 @@ struct entry
 	unsigned distance:7;
 } __attribute__((packed));
 
+extern struct entry *index_region __attribute__((weak));
+
 #define WORD_BITSIZE ((sizeof (void*))<<3)
 struct trailer
 {

@@ -128,7 +128,7 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 	}
 	// else run the slow path
 
-	std::cerr << "*** looking for a more specific match for dieset relative addr 0x" 
+	std::cerr << "*** search for more specific match for dieset relative addr 0x" 
 		<< std::hex << dieset_relative_addr << std::hex
 		<< " than DIE at offset 0x" 
 		<< std::hex << (*initial_under_here.p_ds)[initial_under_here.off]->get_offset() 
@@ -200,7 +200,7 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 		auto p_has_location = dynamic_pointer_cast<spec::with_static_location_die>(*i);
 		if (p_has_location && p_has_location->contains_addr(dieset_relative_addr))
 		{
-			std::cerr << "*** found a more specific match, "
+			std::cerr << "*** found more specific match, "
 				<< (*i)->get_spec().tag_lookup((*i)->get_tag())
 				<< " at 0x"
 				<< std::hex << (*i)->get_offset() << std::dec
@@ -226,7 +226,7 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 		}
 		//else std::cerr << (p_has_location ? "no static location" : "does not contain addr") << std::endl;
 	}
-	std::cerr << "*** failed to find a more specific match for dieset-relative addr 0x" 
+	std::cerr << "*** no more specific match for dieset-relative addr 0x" 
 		<< std::hex << dieset_relative_addr << std::hex
 		<< " (than DIE at offset 0x" << std::hex << initial_under_here.off << std::dec
 		<< std::endl;
