@@ -59,7 +59,7 @@ process_image::process_image(pid_t pid /* = -1 */)
 		unw_local_addr_space : 
 		unw_create_addr_space(&_UPT_accessors/*&unw_accessors*/, 0)),
 #else /* special versions */
-	:	m_pid((assert(pid == -1), -1)),
+	:	m_pid((assert(pid == -1), getpid())),
 		unw_as(unw_local_addr_space),
 #endif
 		executable_elf(((Elf*)0))/*,
@@ -81,8 +81,9 @@ process_image::process_image(pid_t pid /* = -1 */)
 		assert(false);
 #endif
 	}
-	update();
+	//update();
 }
+//process_image::process_image(pid_t pid) {}
 
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */

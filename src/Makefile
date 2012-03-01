@@ -3,7 +3,8 @@ CFLAGS += -I$(MALLOC_HOOKS)
 CFLAGS += -std=gnu99 -fPIC -g -O0 # need gnu99 for Linux-specific mmap() flags
 CXXFLAGS += -I../include/pmirror
 CXXFLAGS += -I../include
-CXXFLAGS += -std=c++0x -fPIC -g -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
+#CXXFLAGS += -std=c++0x -g
+CXXFLAGS += -fPIC -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
 
 LDFLAGS += -L../lib -Wl,-R$(realpath ../lib)
 
@@ -29,10 +30,22 @@ $(C_DEPS): .%.d : %.c
 
 -include $(DEPS)
 
+ifeq ($(NO_LIBUNWIND),yes)
+UNWIND_LDLIBS := 
+else
+UNWIND_LDLIBS += -lunwind-$$(uname -m) -lunwind-ptrace -lunwind 
+endif
+
+ifeq ($(LIBC_INCLUDES_LIBDL),yes)
+LIBDL_LDLIBS :=
+else
+LIBDL_LDLIBS += -ldl
+endif
+
 librtti.so: librtti.cpp libreflect.so
 	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) -lreflect 
 libreflect.so: self-image.o
-	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) -lpmirror -lunwind-ptrace
+	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) #$(UNWIND_LDLIBS)
 
 # First include the rules without the fancy CFLAGS.
 # This builds a lean, mean set of hooks libraries.
@@ -52,7 +65,8 @@ libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 # But this has to be available early enough that the very first mallocs get it.
 # UNLESS we store the padding size in the trailer! This sounds good.
 libpmirror.so: $(CPP_OBJS) | libheap_index_fast_hooks.so #heap_index_hooks_with_type.o
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ -lunwind-$$(uname -m) -lunwind-ptrace -lunwind -ldl -L. -Wl,-R$$(pwd) #-lheap_index_fast_hooks #-ldwarf 
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ $(LIBDL_LDLIBS) -L. -Wl,-R$$(pwd) $(UNWIND_LDLIBS) 
+#-lheap_index_fast_hooks #-ldwarf 
 
 heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(CFLAGS) -c -o "$@" "$<"

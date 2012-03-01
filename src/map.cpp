@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <climits>
+#include <set>
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
@@ -35,10 +36,13 @@ using std::endl;
 using std::pair;
 using std::make_pair;
 using std::map;
+using std::set;
+using std::vector;
 
 using boost::dynamic_pointer_cast;
 using boost::optional;
 using boost::shared_ptr;
+using boost::make_shared;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
@@ -62,31 +66,65 @@ void process_image::update()
 
 bool process_image::rebuild_map()
 {
-    std::ostringstream filename;
-    filename << "/proc/" << m_pid << "/maps";
-    std::vector<std::string> map_contents;
-    // read the maps file
-    string line;
+	std::ostringstream filename;
+	filename << "/proc/" << m_pid << "/maps";
+	vector<string> map_contents;
+	// read the maps file
+	string line;
 	std::ifstream map_file(filename.str());
-    while (map_file)
-    {
-        std::getline(map_file, line, '\n'); 
-        map_contents.push_back(line);
-    }
-    // has it changed since last update?
-    if (map_contents == seen_map_lines) return false;
+#ifdef WORKAROUND_IFSTREAM_BUG
+	std::istringstream in;
+#else
+	std::istream& in = map_file;
+#endif
+	if (map_file.rdstate() & std::ifstream::failbit)
+	{
+		throw string("Could not open maps file.");
+	}
+	
+#ifdef WORKAROUND_IFSTREAM_BUG
+	char all_data[100*1024]; // 100K should be enough
+	//map_file.get(all_data, sizeof all_data, '\0'); // this has the same 1024-byte problem
+	char *pos = &all_data[0];
+	ssize_t ret = 0;
+	while (pos += ret, (ret = read(fileno(map_file), pos, &all_data[sizeof all_data] - pos)) > 0);
+	*pos = '\0';
+	string all_data_string(all_data);
+	in.str(all_data_string);
+#endif
+	
+//	unsigned characters_read = 0;
+//	bool fail_unchanged;
+//	do
+//	{
+//		bool reset_failed = (map_file.fail() || map_file.eof()) ? (map_file.clear(), true) : false;
+		while (std::getline(/*map_file*/ in, line, '\n'))
+		{
+//			characters_read += line.length() + (map_file ? 1 : 0); // +1 for newline
+			map_contents.push_back(line);
+		}
+//		fail_unchanged = reset_failed && (map_file.fail() || map_file.eof());
+//	} while (map_file || !fail_unchanged);
+//	assert(map_file.eof());
+	//assert(!map_file.bad());
+	//assert(!map_file.fail());
+	
+	// has it changed since last update?
+	if (map_contents == seen_map_lines) return false;
 	// else... do the update
-    seen_map_lines = map_contents;
+	seen_map_lines = map_contents;
 	// open the process map for the file
-    char seg_descr[PATH_MAX + 1];
+	char seg_descr[PATH_MAX + 1];
 	std::map<entry_key, entry> new_objects; // replacement map
-    
+
+	cerr << "Saw " << seen_map_lines.size() << " lines (last: " << line << ")" << endl;
     for (auto i = seen_map_lines.begin(); i != seen_map_lines.end(); i++)
     {
 		#undef NUM_FIELDS
 		#define NUM_FIELDS 11
         entry_key k;
         entry e;
+		cerr << "Line is: " << i->c_str() << endl;
         int fields_read = sscanf(i->c_str(), 
         	"%lx-%lx %c%c%c%c %8x %2x:%2x %d %s\n",
     	    &k.first, &k.second, &e.r, &e.w, &e.x, &e.p, &e.offset, &e.maj, &e.min, &e.inode, 
@@ -94,58 +132,58 @@ bool process_image::rebuild_map()
 
 		// we should only get an empty line at the end
 		if (fields_read == EOF) { assert(i+1 == seen_map_lines.end()); }
-        else
-        {
-            if (fields_read < (NUM_FIELDS-1)) throw string("Bad maps data! ") + *i;
+		else
+		{
+			if (fields_read < (NUM_FIELDS-1)) throw string("Bad maps data! ") + *i;
 
-            if (fields_read == NUM_FIELDS) e.seg_descr = seg_descr;
-            else e.seg_descr = std::string();
+			if (fields_read == NUM_FIELDS) e.seg_descr = seg_descr;
+			else e.seg_descr = std::string();
 
-            if (objects.find(k) == objects.end() // common case: adding a new object
-        	    || string(objects.find(k)->second.seg_descr) != objects[k].seg_descr) 
-                 // less common case: same start/end but different libname
-            {
-        	    if (seg_descr[0] == '/' && files.find(seg_descr) == files.end())
-        	    {
-            	    files[seg_descr].p_if = boost::make_shared<std::ifstream>(seg_descr);
-                    if (*files[seg_descr].p_if)
-                    {
-	                    int fd = fileno(*files[seg_descr].p_if);
-    	                if (fd != -1)
-                        {
-                    	    try
-                            {
-                    		    files[seg_descr].p_df = boost::make_shared<lib::file>(fd);
-                                files[seg_descr].p_ds = boost::make_shared<lib::dieset>(
-                        	        *files[seg_descr].p_df);
+			if (objects.find(k) == objects.end() // common case: adding a new object
+				|| string(objects.find(k)->second.seg_descr) != objects[k].seg_descr) 
+				 // less common case: same start/end but different libname
+			{
+				if (seg_descr[0] == '/' && files.find(seg_descr) == files.end())
+				{
+					files[seg_descr].p_if = make_shared<std::ifstream>(seg_descr);
+					if (*files[seg_descr].p_if)
+					{
+						int fd = fileno(*files[seg_descr].p_if);
+						if (fd != -1)
+						{
+							try
+							{
+								files[seg_descr].p_df = make_shared<lib::file>(fd);
+								files[seg_descr].p_ds = make_shared<lib::dieset>(
+									*files[seg_descr].p_df);
 								/* write_type_containment_relation(
 									files[seg_descr].ds_type_containment,
 									*files[seg_descr].p_ds); */
-                    	    }
-                            catch (dwarf::lib::Error)
-                            {
-                        	    files[seg_descr].p_df = boost::shared_ptr<lib::file>();
-                                files[seg_descr].p_ds = boost::shared_ptr<lib::dieset>();
-                            }
-                            catch (dwarf::lib::No_entry)
-                            {
-                        	    files[seg_descr].p_df = boost::shared_ptr<lib::file>();
-                                files[seg_descr].p_ds = boost::shared_ptr<lib::dieset>();
-                            }
-                        }
-                        else 
-                        {
-                    	    files[seg_descr].p_if->close();
-                        }
-                    }
-                }
-            }
-            // now we can assign the new entry to the map
-            new_objects[k] = e;
-        }
+							}
+							catch (dwarf::lib::Error)
+							{
+								files[seg_descr].p_df = shared_ptr<lib::file>();
+								files[seg_descr].p_ds = shared_ptr<lib::dieset>();
+							}
+							catch (dwarf::lib::No_entry)
+							{
+								files[seg_descr].p_df = shared_ptr<lib::file>();
+								files[seg_descr].p_ds = shared_ptr<lib::dieset>();
+							}
+						}
+						else 
+						{
+							files[seg_descr].p_if->close();
+						}
+					}
+				}
+			}
+			// now we can assign the new entry to the map
+			new_objects[k] = e;
+		}
 	}
-    objects = new_objects;
-    return true;
+	objects = new_objects;
+	return true;
 }
 
 void process_image::update_i_executable()
@@ -307,10 +345,11 @@ process_image::addr_t process_image::get_library_base_procfs(const std::string& 
 	char *realpath_ret = realpath(path.c_str(), arg_realpath);
 	assert(realpath_ret);
 
+	set<addr_t> segment_base_addrs;
 	auto found = std::find_if(
 		objects.begin(),
 		objects.end(), 
-		[arg_realpath](const pair<entry_key, entry>& ent)
+		[arg_realpath, &segment_base_addrs](const pair<entry_key, entry>& ent)
 		{
 			if (ent.second.seg_descr.length() > 0
 				&& ent.second.seg_descr[0] == '/')
@@ -323,21 +362,22 @@ process_image::addr_t process_image::get_library_base_procfs(const std::string& 
 				if (string(ent_realpath) == string(arg_realpath))
 				{
 					// is this an executable segment?
-					return ent.second.x == 'x';
+					//return ent.second.x == 'x';
+					segment_base_addrs.insert(ent.first.first);
 				} else return false;
 			}
 			else return false;
 		}
 	);
 
-	if (found == objects.end())
+	if (segment_base_addrs.size() == 0)
 	{
 		std::cerr << "Warning: failed to find library for some DIE..." << std::endl;
 		return 0;
 	}
 	else
 	{
-		return found->first.first; // initial addr
+		return *segment_base_addrs.begin(); //found->first.first; // initial addr
 	}
 #endif
 }
