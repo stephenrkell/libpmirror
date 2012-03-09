@@ -1,6 +1,6 @@
 CFLAGS += -I../include
 CFLAGS += -I$(MALLOC_HOOKS)
-CFLAGS += -std=gnu99 -fPIC -g -O0 # need gnu99 for Linux-specific mmap() flags
+CFLAGS += -std=gnu99 -fpic -g -O0 # need gnu99 for Linux-specific mmap() flags
 CXXFLAGS += -I../include/pmirror
 CXXFLAGS += -I../include
 #CXXFLAGS += -std=c++0x -g
@@ -12,6 +12,7 @@ default: \
 libpmirror.so \
 libheap_index_hooks.so \
 libheap_index_fast_hooks.so \
+libheap_index_preload_hooks.so \
 librtti.so \
 libreflect.so
 
@@ -55,7 +56,7 @@ libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 comma := ,
 libheap_index_preload_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
 	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
-	 -shared -g -fPIC -o "$@" $(CFLAGS) "$<" \
+	 -shared -g -fpic -o "$@" $(CFLAGS) "$<" \
 	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
 	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
 	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \
@@ -63,7 +64,7 @@ libheap_index_preload_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.
 	
 
 libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
-	gcc $(LDFLAGS) -shared -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fPIC -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) "$<"
+	gcc $(LDFLAGS) -shared -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fpic -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) "$<"
 
 # Now add the fancy CFLAGS for the libpmirror type-aware
 # hooks.

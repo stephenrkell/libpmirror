@@ -49,7 +49,7 @@ int fake_get_proc_name(void *eip, char *buf, size_t n)
 }
 int fake_getcontext(unw_context_t *ucp)
 {
-	unw_word_t current_bp, old_bp;
+	unw_word_t current_bp, caller_bp, caller_sp;
 	unw_word_t current_return_addr;
 	current_return_addr = (unw_word_t)
 		/*__builtin_extract_return_address( */
@@ -57,10 +57,13 @@ int fake_getcontext(unw_context_t *ucp)
 		);
 	__asm__ ("movl %%ebp, %0\n" :"=r"(current_bp));
 	/* We get the old break pointer by dereferencing the addr found at 0(%ebp) */
-	old_bp = (unw_word_t) *reinterpret_cast<void **>(current_bp);
+	caller_bp = (unw_word_t) *reinterpret_cast<void **>(current_bp);
+	/* We get the caller stack pointer by taking the addr, and adjusting for
+	 * the arguments & return addr to this function (two words). */
+	caller_sp = (unw_word_t) (reinterpret_cast<void **>(current_bp) + 2);
 	*ucp = (unw_context_t){ 
-		/* context sp = */ current_bp, 
-		/* context bp = */ old_bp, 
+		/* context sp = */ caller_sp, 
+		/* context bp = */ caller_bp, 
 		/* context ip = */ current_return_addr
 	};
 	return 0;
@@ -284,23 +287,28 @@ int stack_object_discovery_handler(process_image *image,
 	else std::cerr << "Did not match a local variable -- giving up." << std::endl;
     return 0;
 }
-        
+
+// FIXME: make cross-process-capable, and support multiple stacks        
 int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void *handler_arg)
 {
-	// FIXME: make cross-process-capable, and support multiple stacks
+	/* We declare all our variables up front, in the hope that we can rely on
+	 * the stack pointer not moving between getcontext and the sanity check.
+	 * FIXME: better would be to write this function in C90 and compile with
+	 * special flags. */
 	unw_cursor_t cursor, saved_cursor, prev_saved_cursor;
-    int unw_ret = unw_ret = unw_getcontext(&this->unw_context);
-    unw_init_local(&cursor, /*this->unw_as,*/ &this->unw_context);
-    
 	unw_word_t higherframe_sp = 0, sp, higherframe_ip = 0, callee_ip;
-    
+	int unw_ret;
+	unw_word_t check_higherframe_sp;
+	
 	// sanity check
-    unw_word_t check_higherframe_sp;
 #ifdef UNW_TARGET_X86
-    __asm__ ("movl %%esp, %0\n" :"=r"(check_higherframe_sp));
+	__asm__ ("movl %%esp, %0\n" :"=r"(check_higherframe_sp));
 #else // assume X86_64 for now
 	__asm__("movq %%rsp, %0\n" : "=r"(check_higherframe_sp));
 #endif
+	unw_ret = /*unw_getcontext*/fake_getcontext(&this->unw_context);
+	unw_init_local(&cursor, /*this->unw_as,*/ &this->unw_context);
+
     unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &higherframe_sp);
     assert(check_higherframe_sp == higherframe_sp);
     std::cerr << "Initial sp=0x" << std::hex << higherframe_sp << std::endl;

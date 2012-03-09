@@ -83,7 +83,7 @@ inline int unw_get_reg(unw_cursor_t *cursor, enum x86_regnum_t reg, unw_word_t *
 	switch (reg)
 	{
 		case UNW_X86_ESP: *(void**)dest = (void*) cursor->frame_esp; return 0;
-		case UNW_X86_EBP: *(void**)*dest = (void*) cursor->frame_ebp; return 0;
+		case UNW_X86_EBP: *(void**)dest = (void*) cursor->frame_ebp; return 0;
 		case UNW_X86_EIP: *(void**)dest = (void*) cursor->frame_eip; return 0;
 		default: return 1;
 	}

@@ -56,6 +56,7 @@ static int c(void *arg)
 int main(int argc, char **argv);
 int main(int argc, char **argv)
 {
+	pmirror::self.update();
 	a(global /* copied */, 42);
     return 0;
 }
