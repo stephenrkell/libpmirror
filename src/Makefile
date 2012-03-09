@@ -1,6 +1,8 @@
-CFLAGS += -I../include
-CFLAGS += -I$(MALLOC_HOOKS)
-CFLAGS += -std=gnu99 -fpic -g -O0 # need gnu99 for Linux-specific mmap() flags
+COMMON_CFLAGS += -I../include
+COMMON_CFLAGS += -I$(MALLOC_HOOKS)
+COMMON_CFLAGS += -std=gnu99 -fpic -g # need gnu99 for Linux-specific mmap() flags
+CFLAGS += $(COMMON_CFLAGS) -O0 
+
 CXXFLAGS += -I../include/pmirror
 CXXFLAGS += -I../include
 #CXXFLAGS += -std=c++0x -g
@@ -13,6 +15,7 @@ libpmirror.so \
 libheap_index_hooks.so \
 libheap_index_fast_hooks.so \
 libheap_index_preload_hooks.so \
+libheap_index_preload_fast_hooks.so \
 librtti.so \
 libreflect.so
 
@@ -57,6 +60,13 @@ comma := ,
 libheap_index_preload_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
 	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
 	 -shared -g -fpic -o "$@" $(CFLAGS) "$<" \
+	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
+	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
+	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \
+	$(MALLOC_HOOKS)/toplevel_init.c $(MALLOC_HOOKS)/linker_glue.c $(MALLOC_HOOKS)/early_malloc.c 
+libheap_index_preload_fast_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
+	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
+	 -shared -g -fpic -o "$@" $(COMMON_CFLAGS) -O4 -DNDEBUG=1 "$<" \
 	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
 	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
 	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \

@@ -20,3 +20,4 @@ lib: src
 	test -L lib/libheap_index_hooks.so || (mkdir -p lib && cd lib && ln -sf ../src/libheap_index_preload_hooks.so .)
 	test -L lib/libheap_index_fast_hooks.so || (mkdir -p lib && cd lib && ln -sf ../src/libheap_index_fast_hooks.so .)
 	test -L lib/libheap_index_preload_hooks.so || (mkdir -p lib && cd lib && ln -sf ../src/libheap_index_preload_hooks.so .)
+	test -L lib/libheap_index_preload_fast_hooks.so || (mkdir -p lib && cd lib && ln -sf ../src/libheap_index_preload_fast_hooks.so .)
