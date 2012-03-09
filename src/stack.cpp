@@ -52,8 +52,9 @@ int unw_init_local(unw_cursor_t *cursor, unw_context_t *context)
 	return 0;
 }
 
-int unw_get_proc_name(void *eip, char *buf, size_t n)
+int unw_get_proc_name(void *eip, char *buf, size_t n, unw_word_t *offp)
 {
+	assert(!offp);
 	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);
 	if (!found) return 1;
 	if (!found->get_name()) return 2;
