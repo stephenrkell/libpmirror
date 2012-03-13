@@ -35,7 +35,24 @@ using dwarf::spec::compile_unit_die;
 long local_addr_space;
 unw_addr_space_t unw_local_addr_space = &local_addr_space;
 struct accessors local_accessors = { &access_mem };
-int fake_get_proc_name(void *eip, char *buf, size_t n)
+
+int unw_get_reg(unw_cursor_t *cursor, enum x86_regnum_t reg, unw_word_t *dest)
+{
+	switch (reg)
+	{
+		case UNW_X86_ESP: *(void**)dest = (void*) cursor->frame_esp; return 0;
+		case UNW_X86_EBP: *(void**)dest = (void*) cursor->frame_ebp; return 0;
+		case UNW_X86_EIP: *(void**)dest = (void*) cursor->frame_eip; return 0;
+		default: return 1;
+	}
+}
+int unw_init_local(unw_cursor_t *cursor, unw_context_t *context)
+{
+	*cursor = *context;
+	return 0;
+}
+
+int unw_get_proc_name(void *eip, char *buf, size_t n)
 {
 	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);
 	if (!found) return 1;
@@ -47,7 +64,7 @@ int fake_get_proc_name(void *eip, char *buf, size_t n)
 		return 0;
 	}
 }
-int fake_getcontext(unw_context_t *ucp)
+int unw_getcontext(unw_context_t *ucp)
 {
 	unw_word_t current_bp, caller_bp, caller_sp;
 	unw_word_t current_return_addr;
@@ -71,7 +88,7 @@ int fake_getcontext(unw_context_t *ucp)
 
 extern unsigned long end; 
 
-int fake_step(unw_cursor_t *cp)
+int unw_step(unw_cursor_t *cp)
 {
 	/*
        On successful completion, unw_step() returns a positive  value  if  the
@@ -85,7 +102,7 @@ int fake_step(unw_cursor_t *cp)
 	// the next-higher ip is the return addr of the frame, i.e. 4(%eip)
 	void *return_addr = *(reinterpret_cast<void **>(ctxt.frame_ebp) + 1);
 	
-	unw_context_t new_ctxt = (unw_context_t){ 
+	unw_context_t new_ctxt = (unw_context_t) { 
 		/* context sp = */ ctxt.frame_ebp,
 		/* context bp = */ (unw_word_t) *reinterpret_cast<void **>(ctxt.frame_ebp),
 		/* context ip = */ (unw_word_t) return_addr
@@ -107,7 +124,6 @@ int fake_step(unw_cursor_t *cp)
 		return new_ctxt.frame_esp - ctxt.frame_esp;
 	}
 }
-
 
 #endif
 
@@ -306,7 +322,7 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 #else // assume X86_64 for now
 	__asm__("movq %%rsp, %0\n" : "=r"(check_higherframe_sp));
 #endif
-	unw_ret = /*unw_getcontext*/fake_getcontext(&this->unw_context);
+	unw_ret = unw_getcontext(&this->unw_context);
 	unw_init_local(&cursor, /*this->unw_as,*/ &this->unw_context);
 
     unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &higherframe_sp);

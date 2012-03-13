@@ -78,41 +78,13 @@ typedef struct
 #endif
 typedef unw_cursor_t unw_context_t;
 
-inline int unw_get_reg(unw_cursor_t *cursor, enum x86_regnum_t reg, unw_word_t *dest)
-{
-	switch (reg)
-	{
-		case UNW_X86_ESP: *(void**)dest = (void*) cursor->frame_esp; return 0;
-		case UNW_X86_EBP: *(void**)dest = (void*) cursor->frame_ebp; return 0;
-		case UNW_X86_EIP: *(void**)dest = (void*) cursor->frame_eip; return 0;
-		default: return 1;
-	}
-}
-inline int unw_init_local(unw_cursor_t *cursor, unw_context_t *context)
-{
-	*cursor = *context;
-	return 0;
-}
 
-/* This is used by fake-libunwind.h only. */
-int fake_get_proc_name(void *eip, char *buf, size_t n);
-int fake_getcontext(unw_context_t *ucp);
-int fake_step(unw_cursor_t *cp);
-
-inline int unw_get_proc_name(unw_cursor_t *cursor, char *buf, size_t n, unw_word_t *FIXME_WHAT_IS_THIS)
-{
-	return fake_get_proc_name((void*) cursor->frame_eip, buf, n);
-}
-
-inline int unw_getcontext(unw_context_t *ucp)
-{
-	return fake_getcontext(ucp);
-}
-
-inline int unw_step(unw_cursor_t *cp)
-{
-	return fake_step(cp);
-}
+/* These are defined in stack.cpp. */
+int unw_get_reg(unw_cursor_t *cursor, enum x86_regnum_t reg, unw_word_t *dest);
+int unw_init_local(unw_cursor_t *cursor, unw_context_t *context);
+int unw_get_proc_name(void *eip, char *buf, size_t n);
+int unw_getcontext(unw_context_t *ucp);
+int unw_step(unw_cursor_t *cp);
 
 #if defined(__cplusplus) || defined(c_plusplus)
 }
