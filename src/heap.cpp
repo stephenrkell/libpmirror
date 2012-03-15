@@ -53,7 +53,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 		if (out_object_start_addr) *out_object_start_addr = (addr_t) found->first;
 		return dynamic_pointer_cast<dwarf::spec::basic_die>(found->second);
 	}
-	else if (m_pid == getpid())
+	else if (is_local)
 	{
 		/* use the local version */
 		return discover_heap_object_local(heap_loc, 
@@ -84,6 +84,7 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 	void *alloc_site = (void *) ret->alloc_site;
 	
 	/* 2. Guess what DWARF types were allocated at that allocation site. */
+	cerr << "Heap object discovery failed for " << (void*)heap_loc << endl;
 	assert(false);
 	
 }

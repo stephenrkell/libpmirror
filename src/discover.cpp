@@ -70,44 +70,6 @@ process_image::discover_object_descr(addr_t addr,
 	}
 }
 
-/* Discover a DWARF variable or subprogram for an arbitrary object in
- * the program. These will usually be static-alloc'd objects, but in
- * DwarfPython they could be heap-alloc'd objects that have been
- * specialised in their layout. Could they be stack-alloc'd? I guess so,
- * although you'd better hope that the C code which allocated them won't
- * be accessing them any more. */
-boost::shared_ptr<spec::with_static_location_die> 
-process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
-{
-	boost::shared_ptr<dwarf::spec::basic_die> most_specific
-	 = dynamic_pointer_cast<dwarf::spec::basic_die>(
-	 	this->find_most_specific_die_for_absolute_addr(addr));
-
-	// if not failed already...
-	if (most_specific)
-	{
-		// we want either a variable or a subprogram
-		while (!(
-				most_specific->get_tag() == DW_TAG_subprogram
-				|| (most_specific->get_tag() == DW_TAG_variable &&
-					dynamic_pointer_cast<dwarf::spec::variable_die>(most_specific)
-						->has_static_storage())))
-		{
-			most_specific = most_specific->get_parent();
-			if (most_specific->get_tag() == 0 || most_specific->get_offset() == 0UL)
-			{
-				// failed!
-				return boost::shared_ptr<spec::with_static_location_die>();
-			}
-		}
-	}
-	return dynamic_pointer_cast<dwarf::spec::with_static_location_die>(most_specific);
-}
-
-
-//void *
-
-
 const char *process_image::name_for_memory_kind(int k) // relaxation for ltrace++
 {
 	switch(k)
@@ -126,7 +88,7 @@ std::ostream& operator<<(std::ostream& s, const process_image::memory_kind& k)
     return s;
 }
 
-process_image::memory_kind process_image::discover_object_memory_kind(addr_t addr) const
+process_image::memory_kind process_image::discover_object_memory_kind_from_maps(addr_t addr) const
 {
 	/* HACK: */ const_cast<process_image *>(this)->update();
 	
@@ -172,7 +134,7 @@ process_image::memory_kind process_image::discover_object_memory_kind(addr_t add
                     	std::cerr << "Warning: did not understand segment description " 
                          << seg_descr
                          << " at address " << (void*)begin
-                         << " in memory map of process " << ((m_pid == -1) ? getpid() : m_pid)
+                         << " in memory map of process " << m_pid
                          << std::endl;
                     	ret = UNKNOWN; break; 
                     }

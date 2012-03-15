@@ -3,6 +3,8 @@
 #include <sstream>
 #include <cstring>
 
+#include <strings.h>
+
 /* define BEGINNING_OF_STACK  -- note that this is just a sentinel and doesn't have 
  * to be accurate! Let's make sure it's at least as high as the first stack loc though. */
 #ifdef UNW_TARGET_X86
@@ -31,6 +33,7 @@ using dwarf::spec::compile_unit_die;
 
 #ifdef NO_LIBUNWIND
 /* We define some fake libunwind stuff here. */
+#include "fake-libunwind.h"
 #include "libreflect.hpp"
 long local_addr_space;
 unw_addr_space_t unw_local_addr_space = &local_addr_space;
@@ -52,10 +55,10 @@ int unw_init_local(unw_cursor_t *cursor, unw_context_t *context)
 	return 0;
 }
 
-int unw_get_proc_name(void *eip, char *buf, size_t n, unw_word_t *offp)
+int unw_get_proc_name(unw_cursor_t *p_cursor, char *buf, size_t n, unw_word_t *offp)
 {
 	assert(!offp);
-	auto found = pmirror::self.find_subprogram_for_absolute_ip((unw_word_t) eip);
+	auto found = pmirror::self.find_subprogram_for_absolute_ip(p_cursor->frame_eip);
 	if (!found) return 1;
 	if (!found->get_name()) return 2;
 	else 
@@ -138,7 +141,7 @@ process_image::discover_stack_object(
 	addr_t *out_frame_return_addr
 	)
 {
-    if (m_pid == getpid())
+    if (is_local)
     {
     	/* use the local version */
         return discover_stack_object_local(addr, out_object_start_addr, 
@@ -168,6 +171,7 @@ process_image::discover_stack_object_local(
 	if (out_frame_base) *out_frame_base = arg.frame_base;
 	if (out_frame_return_addr) *out_frame_return_addr = arg.frame_return_addr;
     // extract and return return value
+	if (!arg.discovered_die) cerr << "Stack object discovery failed for " << (void*)addr << endl;
     return arg.discovered_die;
 }
 
@@ -348,6 +352,7 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
     	/* First get the ip, sp and symname of the current stack frame. */
         unw_ret = unw_get_reg(&cursor, UNW_REG_IP, &ip); assert(unw_ret == 0);
         unw_ret = unw_get_reg(&cursor, UNW_REG_SP, &sp); assert(unw_ret == 0); // sp = higherframe_sp
+		bzero(name, 100);
         unw_ret = unw_get_proc_name(&cursor, name, 100, NULL); 
         if (unw_ret != 0) strncpy(name, "(no name)", 100);
         /* Now get the sp of the next higher stack frame, 
@@ -422,6 +427,7 @@ process_image::discover_stack_object_remote(
 )
 {
 	assert(false);
+	cerr << "Stack object discovery failed for " << (void*)addr << endl;
 	return boost::shared_ptr<dwarf::spec::with_dynamic_location_die>();
 }
 

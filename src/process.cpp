@@ -55,11 +55,13 @@ using dwarf::spec::compile_unit_die;
 process_image::process_image(pid_t pid /* = -1 */)
 #ifndef NO_LIBUNWIND 
 	: 	m_pid(pid == -1 ? getpid() : pid),
-		unw_as(pid == -1 ? 
+		is_local(pid == getpid()), /* so can pass either -1 or our own pid */
+		unw_as(is_local ? 
 		unw_local_addr_space : 
 		unw_create_addr_space(&_UPT_accessors/*&unw_accessors*/, 0)),
 #else /* special versions */
 	:	m_pid((assert(pid == -1), getpid())),
+		is_local(true),
 		unw_as(unw_local_addr_space),
 #endif
 		executable_elf(((Elf*)0))/*,
@@ -67,7 +69,7 @@ process_image::process_image(pid_t pid /* = -1 */)
 {
 	int retval = unw_getcontext(&unw_context);
 	assert(retval == 0);
-	if (pid == -1)
+	if (is_local)
 	{
 		unw_accessors = *unw_get_accessors(unw_local_addr_space);
 		unw_priv = 0;

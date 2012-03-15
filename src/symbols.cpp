@@ -55,7 +55,6 @@ process_image::symbols_iteration_state::symbols_iteration_state
 		{
 			if (shdr.sh_type == sh_type) 
 			{
-				Elf_Data *data;
 				char *name;
 				char *stringName;
 				data = 0;
@@ -65,8 +64,12 @@ process_image::symbols_iteration_state::symbols_iteration_state
 					throw dwarf::lib::No_entry(); // FIXME: better choice of exception
 				}
 				/* now print the symbols */
-				firstsym = (GElf_Sym*) data->d_buf;
-				lastsym = (GElf_Sym*) ((char*) data->d_buf + data->d_size);
+				firstsym = data->d_buf;
+				lastsym = (char*) data->d_buf + data->d_size;
+				//cerr << "First symbol is at " << firstsym << ", last at " << lastsym << endl;
+				//cerr << "Strtab section has index " << shdr.sh_link << endl;
+				symcount = shdr.sh_size / shdr.sh_entsize;
+				//cerr << "Symtab has " << symcount << "symbols." << endl;
 				return;
 			}
 		}

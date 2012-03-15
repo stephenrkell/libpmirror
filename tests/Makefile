@@ -1,6 +1,8 @@
 CXXFLAGS += -I../include
 CXXFLAGS += -std=gnu++0x -g3 
 
+CFLAGS += -I/usr/pkg/include
+
 LDFLAGS += -L../src -Wl,-R$(realpath ../src) 
 
 LDLIBS  += -lprocessimage

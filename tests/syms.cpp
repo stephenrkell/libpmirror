@@ -1,17 +1,24 @@
 #include <iostream>
 #include <climits>
 #include <cstdlib>
-#include <processimage/process.hpp>
+#include <pmirror/process.hpp>
+
+using pmirror::process_image;
+
+#ifndef PATH_MAX
+#define PATH_MAX MAXPATHLEN 
+#endif
 
 int main(int argc, char **argv)
 {
 	using namespace std;
 	
 	process_image self(-1);
-	char *exec_realpath = realpath(argv[0], NULL);
+	self.update();
+	char exec_realpathbuf[PATH_MAX];
+	char *exec_realpath = realpath(argv[0], exec_realpathbuf);
 	auto exec = self.files.find(exec_realpath);
 	assert(exec != self.files.end());
-	free(exec_realpath);
 	auto syms = self.symbols(exec);
 	cout << "Dynamic symbols in executable symtab: " << endl;
 	for (auto i_sym = syms.first; i_sym != syms.second; i_sym++)

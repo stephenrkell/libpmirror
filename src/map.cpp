@@ -24,6 +24,10 @@
 #define MAXPATHLEN PATH_MAX
 #endif
 
+#ifdef HAVE_DLADDR
+#include <dlfcn.h>
+#endif
+
 #include <srk31/ordinal.hpp>
 
 namespace pmirror {
@@ -117,14 +121,14 @@ bool process_image::rebuild_map()
 	char seg_descr[PATH_MAX + 1];
 	std::map<entry_key, entry> new_objects; // replacement map
 
-	cerr << "Saw " << seen_map_lines.size() << " lines (last: " << line << ")" << endl;
+	//cerr << "Saw " << seen_map_lines.size() << " lines (last: " << line << ")" << endl;
     for (auto i = seen_map_lines.begin(); i != seen_map_lines.end(); i++)
     {
 		#undef NUM_FIELDS
 		#define NUM_FIELDS 11
         entry_key k;
         entry e;
-		cerr << "Line is: " << i->c_str() << endl;
+		//cerr << "Line is: " << i->c_str() << endl;
         int fields_read = sscanf(i->c_str(), 
         	"%lx-%lx %c%c%c%c %8x %2x:%2x %d %s\n",
     	    &k.first, &k.second, &e.r, &e.w, &e.x, &e.p, &e.offset, &e.maj, &e.min, &e.inode, 
@@ -336,10 +340,10 @@ process_image::addr_t process_image::get_library_base_local(const std::string& p
 		return 0;
 	}
 #else /* fall back on /proc version */
-	return get_library_base_procfs(path);
+	return get_library_base_from_maps(path);
 }
 
-process_image::addr_t process_image::get_library_base_procfs(const std::string& path)
+process_image::addr_t process_image::get_library_base_from_maps(const std::string& path)
 {
 	char arg_realpath[MAXPATHLEN];
 	char *realpath_ret = realpath(path.c_str(), arg_realpath);
@@ -377,7 +381,45 @@ process_image::addr_t process_image::get_library_base_procfs(const std::string& 
 	}
 	else
 	{
-		return *segment_base_addrs.begin(); //found->first.first; // initial addr
+#if HAVE_DLADDR
+		if (is_local)
+		{
+			/* This is the NetBSD case. */
+			for (auto i_addr = segment_base_addrs.begin();
+				i_addr != segment_base_addrs.end();
+				++i_addr)
+			{
+				Dl_info info;
+				int ret = dladdr((void*) *i_addr, &info);
+				if (ret)
+				{
+					char fname_realpath_buf[PATH_MAX];
+					char *fname_realpath = realpath(info.dli_fname, fname_realpath_buf);
+					assert(fname_realpath);
+					/* Is this file our file? */
+					if (string(fname_realpath) == string(arg_realpath))
+					{
+						cerr << "Address " << (void*)*i_addr << " falls on or after some symbol in "
+							<< info.dli_fname << " so selecting its load address "
+							<< info.dli_fbase << " as the object's base." << endl;
+						return (addr_t) info.dli_fbase;
+					}
+					else cerr << "Warning: address " << (void*)*i_addr 
+						<< " beginning a segment of file " << arg_realpath
+						<< " falls on or after some symbol in different file "
+						<< info.dli_fname << endl;
+					
+				}
+			}
+			cerr << "No segment base address for " << arg_realpath
+				<< " has a symbol preceding or equal to it within the same file." << endl;
+		}
+		// fall through
+#endif
+		// return the lowest element in the set.
+		// FIXME: this is BROKEN!
+		assert(false);
+		return *segment_base_addrs.begin();
 	}
 #endif
 }
@@ -501,7 +543,7 @@ process_image::addr_t process_image::get_library_base_remote(const std::string& 
 	}
     return 0;
 #else
-	return get_library_base_procfs(path);
+	return get_library_base_from_maps(path);
 #endif
 }
     

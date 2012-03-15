@@ -35,6 +35,7 @@
 
 extern "C" {
 #include "objdiscover.h"
+#include "addrmap.h"
 }
 
 #include "unw_read_ptr.hpp"
@@ -92,14 +93,14 @@ struct process_image
         int inode;
         string seg_descr;
     };
-    enum memory_kind
-    {
-	    UNKNOWN,
-        STACK,
-        HEAP,
-        STATIC,
-        ANON
-    };
+//     enum memory_kind
+//     {
+// 	    UNKNOWN,
+//         STACK,
+//         HEAP,
+//         STATIC,
+//         ANON
+//     };
 	static const char *name_for_memory_kind(/*memory_kind*/ int k); // relaxation for ltrace++
     
     struct file_entry
@@ -140,6 +141,7 @@ struct process_image
 
 private:
 	pid_t m_pid;
+	bool is_local;
 	unw_addr_space_t unw_as;
 	unw_accessors_t unw_accessors;
 	void *unw_priv;
@@ -213,7 +215,15 @@ public:
 		optional<map<string, file_entry>::iterator> begin_here = 
 			optional<map<string, file_entry>::iterator>()
 	);
-    memory_kind discover_object_memory_kind(addr_t addr) const;
+	
+	typedef ::object_memory_kind memory_kind;
+	memory_kind discover_object_memory_kind(addr_t addr) const
+	{ assert(is_local); // FIXME: remote implementation has gone away temporarily
+	  return get_object_memory_kind((void*) addr);
+	}
+	// slower version using maps info
+	memory_kind discover_object_memory_kind_from_maps(addr_t addr) const;
+	
     addr_t get_dieset_base(abstract_dieset& ds);
     addr_t get_library_base(const string& path);
 
@@ -250,7 +260,7 @@ private:
 
     addr_t get_library_base_local(const string& path);
     addr_t get_library_base_remote(const string& path);
-    addr_t get_library_base_procfs(const string& path);
+    addr_t get_library_base_from_maps(const string& path);
     bool rebuild_map();
     void update_rdbg();
     void update_i_executable();
@@ -352,32 +362,90 @@ public:
 		Elf *elf;
 		Elf_Scn *scn;
 		GElf_Shdr shdr;
-		GElf_Sym *firstsym;
-		GElf_Sym *lastsym;
+		Elf_Data *data;
+		void *firstsym;
+		void *lastsym;
+		unsigned symcount;
 
 		symbols_iteration_state(const process_image::files_iterator& i,
 			Elf64_Word sh_type = SHT_DYNSYM);
 		~symbols_iteration_state();
 	};
-	typedef GElf_Sym *symbols_iterator_base;
+	
+	// NO! We can't do this, because it violates the portable usage of gelf.
+	// We can't just increment a GElf_Sym* -- it will over-increment on 32-bit
+	// platforms. 
+	// typedef GElf_Sym *symbols_iterator_base;
+	struct symbols_iterator_base 
+	{ 
+		unsigned pos; 
+		bool operator==(const symbols_iterator_base& arg) const 
+		{ return this->pos == arg.pos; }
+	};
+	
 	struct symbols_iterator
 	: public boost::iterator_adaptor<symbols_iterator,
-		symbols_iterator_base> 
-		//, // Base
-		//GElf_Sym, // Value
-		//boost::random_access_traversal_tag, // Traversal
-		//GElf_Sym& // Reference
-	//>
+		symbols_iterator_base,  // Base
+		GElf_Sym, // Value
+		boost::random_access_traversal_tag, // Traversal
+		GElf_Sym, // Reference -- like value because we can't write through a GElf_Sym
+		signed // Difference
+	>
 	{
 		typedef symbols_iterator_base Base;
+		
+		typedef boost::iterator_adaptor<
+			symbols_iterator, 
+			symbols_iterator_base,
+			GElf_Sym,
+			boost::random_access_traversal_tag,
+			GElf_Sym,
+			signed
+		> super;
+		
+		typedef symbols_iterator self;
 		
 		shared_ptr<symbols_iteration_state> origin;
 		
 		symbols_iterator(Base p, shared_ptr<symbols_iteration_state> origin)
-		 : symbols_iterator::iterator_adaptor_(p), origin(origin) {}
+		 : super(p), origin(origin) {}
 
 		symbols_iterator() // no state
-		 : symbols_iterator::iterator_adaptor_(0), origin() {}
+		 : super((symbols_iterator_base){ 0 }), origin() 
+		 {
+		 	cerr << "Warning: null symbol iterator constructed" << endl;
+		 }
+		
+		//GElf_Sym& dereference() const
+		GElf_Sym dereference() const
+		{
+			GElf_Sym sym;
+			gelf_getsym(origin->data, base().pos, &sym);
+			return sym;
+		}
+		
+		void increment()
+		{
+			++base_reference().pos;
+		}
+		void decrement()
+		{
+			--base_reference().pos;
+		}
+		
+		typedef signed difference_type;
+		void advance(difference_type n)
+		{
+			base_reference().pos += n;
+		}
+		
+		difference_type
+		distance_to(
+			self const& other
+		)
+		{
+			return other.base_reference().pos - this->base_reference().pos;
+		}
 
 	};
 	
@@ -390,8 +458,8 @@ public:
 		Elf64_Word sh_type = SHT_DYNSYM)
 	{
 		auto p_priv = boost::make_shared<symbols_iteration_state>(i, sh_type);
-		symbols_iterator begin(p_priv->firstsym, p_priv);
-		symbols_iterator end(p_priv->lastsym, p_priv);
+		symbols_iterator begin((symbols_iterator_base){ 0 }, p_priv);
+		symbols_iterator end((symbols_iterator_base){ p_priv->symcount }, p_priv);
 		return make_pair(begin, end);
 	}
 	pair<symbols_iterator, symbols_iterator> static_symbols(process_image::files_iterator& i)
