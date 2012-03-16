@@ -31,7 +31,7 @@
 #endif
 
 #include <srk31/algorithm.hpp> // from libsrk31c++
-#include <srk31/conjoining_iterator.hpp>
+#include <srk31/concatenating_iterator.hpp>
 
 extern "C" {
 #include "objdiscover.h"
@@ -64,8 +64,8 @@ using std::make_pair;
 using std::map;
 using std::multimap;
 
-using srk31::conjoining_iterator;
-using srk31::conjoining_sequence;
+using srk31::concatenating_iterator;
+using srk31::concatenating_sequence;
 
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */
@@ -462,24 +462,44 @@ public:
 		symbols_iterator end((symbols_iterator_base){ p_priv->symcount }, p_priv);
 		return make_pair(begin, end);
 	}
-	pair<symbols_iterator, symbols_iterator> static_symbols(process_image::files_iterator& i)
-	{
-		return symbols(i, SHT_SYMTAB);
-	}
-	pair<symbols_iterator, symbols_iterator> dynamic_symbols(process_image::files_iterator& i)
-	{
-		return symbols(i, SHT_DYNSYM);
-	}
-	// FIXME: want all_symbols here
 	pair<
-		conjoining_iterator<symbols_iterator>,
-		conjoining_iterator<symbols_iterator>
-	> all_symbols(process_image::files_iterator& i)
+		concatenating_iterator<symbols_iterator>,
+		concatenating_iterator<symbols_iterator>
+	>
+	static_symbols(process_image::files_iterator& i)
 	{
-		typedef conjoining_iterator<symbols_iterator> all_symbols_sequence;
-		auto p_seq = boost::make_shared< conjoining_sequence<symbols_iterator> >();
-		auto dynamic_syms = static_symbols(i);
-		auto static_syms = dynamic_symbols(i);
+		//return symbols(i, SHT_SYMTAB);
+		typedef concatenating_iterator<symbols_iterator> all_symbols_sequence;
+		auto p_seq = boost::make_shared< concatenating_sequence<symbols_iterator> >();
+		auto static_syms = symbols(i, SHT_SYMTAB);
+		p_seq->append(static_syms.first, static_syms.second);
+		return make_pair(p_seq->begin(), p_seq->end());
+	}
+	pair<
+		concatenating_iterator<symbols_iterator>,
+		concatenating_iterator<symbols_iterator>
+	>
+	dynamic_symbols(process_image::files_iterator& i)
+	{
+		typedef concatenating_iterator<symbols_iterator> all_symbols_sequence;
+		auto p_seq = boost::make_shared< concatenating_sequence<symbols_iterator> >();
+		auto dynamic_syms = symbols(i, SHT_DYNSYM);
+		p_seq->append(dynamic_syms.first, dynamic_syms.second);
+		return make_pair(
+			p_seq->begin(/*p_seq*/),
+			p_seq->end(/*p_seq*/)
+		);
+	}
+	pair<
+		concatenating_iterator<symbols_iterator>,
+		concatenating_iterator<symbols_iterator>
+	> 
+	all_symbols(process_image::files_iterator& i)
+	{
+		typedef concatenating_iterator<symbols_iterator> all_symbols_sequence;
+		auto p_seq = boost::make_shared< concatenating_sequence<symbols_iterator> >();
+		auto dynamic_syms = symbols(i, SHT_SYMTAB);
+		auto static_syms = symbols(i, SHT_DYNSYM);
 		p_seq->append(dynamic_syms.first, dynamic_syms.second);
 		p_seq->append(static_syms.first, static_syms.second);
 		return make_pair(

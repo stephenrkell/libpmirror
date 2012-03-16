@@ -2,6 +2,7 @@
 #include <climits>
 #include <cstdlib>
 #include <pmirror/process.hpp>
+#include <srk31/algorithm.hpp>
 
 using pmirror::process_image;
 
@@ -28,8 +29,24 @@ int main(int argc, char **argv)
 		if(!name)
 		{
 			// null symbol name
-			cout << "(null symbol name)" << endl;
+			//cout << "(null symbol name)" << endl;
 		}
-		else cout << name << endl;
+		else {} //cout << name << endl;
 	}
+	auto static_symbols = self.static_symbols(exec);
+	auto dynamic_symbols = self.dynamic_symbols(exec);
+	auto all_symbols = self.all_symbols(exec);
+	unsigned static_symbols_count = srk31::count(
+		static_symbols.first, static_symbols.second
+	);
+	unsigned dynamic_symbols_count = srk31::count(
+		dynamic_symbols.first, dynamic_symbols.second
+	);
+	unsigned all_symbols_count = srk31::count(
+		all_symbols.first, all_symbols.second
+	);
+	assert(all_symbols_count
+	 == static_symbols_count + dynamic_symbols_count);
+
+	return 0;
 }

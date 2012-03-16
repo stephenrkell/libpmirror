@@ -18,9 +18,6 @@ using std::make_pair;
 using boost::dynamic_pointer_cast;
 using boost::shared_ptr;
 
-using srk31::conjoining_iterator;
-using srk31::conjoining_sequence;
-
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
 using dwarf::spec::type_die;

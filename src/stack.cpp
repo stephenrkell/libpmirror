@@ -380,7 +380,11 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
         }
         else
         {
-        	assert(false); // what does a retval < 0 mean?
+        	// return value <1 means error
+			// We return without calling the handler. This does mean that
+			// the very top frame will not get handler'd
+			ret = step_ret;
+			break;
         }
         
         ret = handler(
