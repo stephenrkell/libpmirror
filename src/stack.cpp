@@ -107,7 +107,7 @@ int unw_step(unw_cursor_t *cp)
 	void *return_addr = *(reinterpret_cast<void **>(ctxt.frame_ebp) + 1);
 	
 	unw_context_t new_ctxt = (unw_context_t) { 
-		/* context sp = */ ctxt.frame_ebp,
+		/* context sp = */ (unw_word_t) (reinterpret_cast<void **>(ctxt.frame_ebp) + 2),
 		/* context bp = */ (unw_word_t) *reinterpret_cast<void **>(ctxt.frame_ebp),
 		/* context ip = */ (unw_word_t) return_addr
 	};

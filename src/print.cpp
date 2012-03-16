@@ -39,7 +39,7 @@ ostream& process_image::print_object(ostream& s, void *obj) const
 #ifndef NO_MALLOC_USABLE_SIZE
 				<< " size " << malloc_usable_size(obj_start) 
 #endif
-				<< ", allocated at " << tr->alloc_site;
+				<< ", allocated at " << (void*)tr->alloc_site;
 			return s;
 		}
 		case memory_kind::STATIC:

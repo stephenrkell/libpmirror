@@ -19,15 +19,23 @@ libheap_index_preload_fast_hooks.so \
 librtti.so \
 libreflect.so
 
+CC_SRC := self-image.cc
 CPP_SRC := process.cpp stack.cpp heap.cpp static.cpp discover.cpp symbols.cpp map.cpp print.cpp
+
+CC_OBJS := self-image.o
 CPP_OBJS := $(patsubst %.cpp,%.o,$(CPP_SRC))
+
 C_SRC := heap_index_hooks.c
 
+CC_DEPS := $(patsubst %.cc,.%.d,$(CC_SRC))
 CPP_DEPS := $(patsubst %.cpp,.%.d,$(CPP_SRC))
 C_DEPS := $(patsubst %.c,.%.d,$(C_SRC))
+
 DEPS := $(CC_DEPS) $(CPP_DEPS) $(C_DEPS)
 
 $(CPP_DEPS): .%.d : %.cpp
+	$(CXX) -MM $(CXXFLAGS) "$<"  > "$@"
+$(CC_DEPS): .%.d : %.cc
 	$(CXX) -MM $(CXXFLAGS) "$<"  > "$@"
 $(C_DEPS): .%.d : %.c
 	$(CC) -MM $(CFLAGS) "$<"  > "$@"

@@ -7,6 +7,7 @@
 #include <functional>
 
 #include <sys/types.h>
+#include <unistd.h>
 
 #include <link.h>
 
@@ -218,8 +219,20 @@ public:
 	
 	typedef ::object_memory_kind memory_kind;
 	memory_kind discover_object_memory_kind(addr_t addr) const
-	{ assert(is_local); // FIXME: remote implementation has gone away temporarily
-	  return get_object_memory_kind((void*) addr);
+	{
+		if (is_local)
+		{
+			memory_kind retval = get_object_memory_kind((void*) addr);
+			if (retval != UNKNOWN) return retval;
+			// we have one trick left: use sbrk, which can rule out static
+			if (addr < (unsigned long) sbrk(0)) return HEAP;
+			// otherwise, fall through
+			cerr << "Warning: falling back on maps to identify " 
+				<< std::hex << addr << std::dec
+				<< " as heap or static storage." << endl;
+		}
+		// fall back on the maps version
+		return discover_object_memory_kind_from_maps(addr);
 	}
 	// slower version using maps info
 	memory_kind discover_object_memory_kind_from_maps(addr_t addr) const;
