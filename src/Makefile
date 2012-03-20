@@ -8,7 +8,7 @@ CXXFLAGS += -I../include
 #CXXFLAGS += -std=c++0x -g
 CXXFLAGS += -fPIC -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
 
-LDFLAGS += -L../lib -Wl,-R$(realpath ../lib)
+LDFLAGS += -L. -Wl,-R$(realpath .) -L../lib -Wl,-R$(realpath ../lib)
 
 default: \
 libpmirror.so \

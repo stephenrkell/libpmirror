@@ -43,13 +43,23 @@ process_image::discover_object_descr(addr_t addr,
 			if (discovered_obj)
 			{
 				if (discovered_obj->get_tag() == DW_TAG_variable)
-					return dynamic_pointer_cast<
-						dwarf::spec::variable_die>(discovered_obj)->get_type();
-				else return discovered_obj; // HACK: return subprograms as their own descriptions
+				{
+					auto as_variable = dynamic_pointer_cast<
+						dwarf::spec::variable_die>(discovered_obj);
+					assert(as_variable);
+					if (!as_variable->get_type()) cerr << "Warning: static object DIE search found typeless object "
+						<< as_variable->summary() << " at 0x" << std::hex << addr << std::dec << endl;
+					return as_variable->get_type();
+				}
+				else
+				{
+					assert(discovered_obj->get_tag() == DW_TAG_subprogram);
+					return discovered_obj; // HACK: return subprograms as their own descriptions
+				}
 			}
-			std::cerr << 
+			cerr << 
 				"Warning: static object DIE search failed for static object at 0x" 
-				<< addr << std::endl;
+				<< std::hex << addr << std::dec << endl;
 		} break;
 		case STACK: {
 			// DEBUG: dump the stack first
@@ -59,10 +69,22 @@ process_image::discover_object_descr(addr_t addr,
 			{
 				return discovered_obj->get_type();
 			}
-			else return boost::shared_ptr<spec::basic_die>();
+			else 
+			{
+				if (discovered_obj) cerr << "Warning: stack object DIE search found typeless object "
+					<< discovered_obj->summary() << " at 0x" << std::hex << addr << std::dec << endl;
+				else /* didn't discover anything */ cerr << "Warning: stack object DIE search found nothing "
+					<< " for object at 0x" << std::hex << addr << std::dec << endl;
+				return boost::shared_ptr<spec::basic_die>();
+			}
 		}
-		case HEAP:
-			return discover_heap_object(addr, imprecise_static_type, out_object_start_addr);
+		case HEAP: {
+			auto returned = discover_heap_object(addr, imprecise_static_type, out_object_start_addr);
+			if (!returned) cerr << "Warning: heap object DIE search failed for heap object at 0x" 
+				<< std::hex << addr << std::dec << endl;
+
+			return returned;
+		}
 		default:
 		case UNKNOWN:
 			std::cerr << "Warning: unknown kind of memory at 0x" << std::hex << addr << std::dec << std::endl;

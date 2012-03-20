@@ -6,6 +6,9 @@
 #define _GNU_SOURCE
 #endif
 #include <malloc.h>
+#ifdef HAVE_DLADDR
+#include <dlfcn.h>
+#endif
 
 extern "C" {
 #include "heap_index.h"
@@ -67,7 +70,13 @@ process_image::discover_heap_object(addr_t heap_loc,
 	}
 }
 
-/* Hard-coded table of allocation sites. */
+/* Hard-coded table of allocation sites.
+ * NOTE: if we want to support >1 allocation type per function,
+ * and 
+ *  */
+static map<string, vector<string> > allocsite_typenames = {
+	{ "makefooblahfunc", (vector<string>){ "foo", "blah" } }
+};
 
 boost::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object_local(addr_t heap_loc,
@@ -80,11 +89,69 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 		(const void *)heap_loc, 
 		(void **) out_object_start_addr
 	);
-	if (!ret) return shared_ptr<dwarf::spec::basic_die>();
+	if (!ret) 
+	{
+		cerr << "Could not locate metadata for heap object " << (void*)heap_loc << endl;
+		return shared_ptr<dwarf::spec::basic_die>();
+	}
 	void *alloc_site = (void *) ret->alloc_site;
+#if HAVE_DLADDR
+	/* 2. Guess what DWARF types were allocated at that allocation site. */
+	shared_ptr<type_die> alloc_t;
+	#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
+	for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
+	{
+		addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
+		Dl_info dli;
+		/* clear dlerror() */
+		dlerror();
+		int err = dladdr(reinterpret_cast<void*>(addr_to_test), &dli);
+		if (err != 0) /* note unusual error reporting convention */
+		{
+			auto found = allocsite_typenames.find(dli.dli_sname);
+			if (found != allocsite_typenames.end())
+			{
+				auto &vec = found->second;
+
+				// which function allocated the object?
+				auto subp = discover_object_descr((addr_t) addr_to_test);
+				assert(subp && subp->get_tag() == DW_TAG_subprogram);
+				auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
+				assert(t);
+				alloc_t = dynamic_pointer_cast<type_die>(t);
+				if (alloc_t) 
+				{
+
+					// FIXME: now install this into the record
+					// ret->alloc_site_flag = 1;
+					// ret->alloc_site = reinterpret_cast<intptr_t>(&vec->second);
+					// FIXME: now use the flag when doing lookup
+
+					// return
+					return alloc_t;
+				}
+			}
+			else
+			{
+				cerr << "Failed to recognise allocsite 0x" << std::hex << addr_to_test << std::dec
+					<< " (symbol: " << dli.dli_sname << ", object: " << dli.dli_fname << ")" << endl;
+			}
+		}
+		else
+		{
+			char *reported_error = dlerror();
+			cerr << "Failed to find a symbol preceding address 0x" 
+				<< std::hex << addr_to_test << std::dec 
+				<< " (error: " << string(reported_error ? reported_error : "(no error)") << ")" 
+				<< endl;
+		}
+	}
+#endif
 	
 	/* 2. Guess what DWARF types were allocated at that allocation site. */
-	cerr << "Heap object discovery failed for " << (void*)heap_loc << endl;
+	cerr << "Heap object discovery not supported for " << (void*)heap_loc << endl;
+	cerr << "Caller supplied imprecise static type: " 
+		<< (imprecise_static_type ? imprecise_static_type->summary() : "(none)") << endl;
 	assert(false);
 	
 }
