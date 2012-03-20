@@ -557,6 +557,7 @@ struct stack_object_discovery_handler_arg
 	
 };        
 
+typedef process_image::addr_t addr_t;
 std::ostream& operator<<(std::ostream& s, const process_image::memory_kind& k);
 
 } // end namespace pmirror
