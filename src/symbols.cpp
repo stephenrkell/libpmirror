@@ -26,21 +26,20 @@ using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
 // constructor
-process_image::symbols_iteration_state::symbols_iteration_state
-(const process_image::files_iterator& i, Elf64_Word sh_type /* = SHT_DYNSYM */)
+symbols_iteration_state::symbols_iteration_state
+(Elf *e, Elf64_Word sh_type /* = SHT_DYNSYM */)
 {
     /* process_image::files_iterator *p_file_iterator
      = reinterpret_cast<process_image::files_iterator *>(p_file_iterator_void);
 	(*p_file_iterator)->second.p_df->get_elf(&elf);*/
 
-	if (!i->second.p_df)
+	if (!e)
 	{
 		firstsym = lastsym = 0;
 		elf = 0;
 		return;
 	}
-	
-	i->second.p_df->get_elf(&elf);
+	else elf = e;
 
 	// code gratefully stolen from Sun libelf docs
 	scn = 0;
@@ -74,7 +73,7 @@ process_image::symbols_iteration_state::symbols_iteration_state
 	firstsym = lastsym = 0;
 }
 	
-process_image::symbols_iteration_state::~symbols_iteration_state()
+symbols_iteration_state::~symbols_iteration_state()
 {
 	// FIXME: do we really not have any ELF cleanup to do? 
 	// get_elf() needs no release_elf()?
@@ -117,7 +116,7 @@ process_image::sym_binding_t resolve_symbol_from_process_image(
 			return binding;
 		}
 		//printf("%d: %sn",number++, name);
-    }
+	}
 	/* not found! */
 	throw dwarf::lib::No_entry();
 }

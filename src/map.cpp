@@ -60,12 +60,13 @@ void process_image::update()
 {
 	bool changed = rebuild_map();
 	if (changed)
-    {
-    	update_i_executable();
-	    update_executable_elf();
+	{
+		update_i_executable();
+		update_executable_elf();
+		update_intervals();
 		/* update_master_type_equivalence();
 		update_master_type_containment(); */
-    }
+	}
 }
 
 bool process_image::rebuild_map()
@@ -192,59 +193,108 @@ bool process_image::rebuild_map()
 
 void process_image::update_i_executable()
 {
-    /* FIXME: if a mapping goes away, we remove its entry but leave its 
-     * file open. This does no harm, but would be nice to delete it. */
-    /* FIXME: we don't clear up anonymous mappings either, so if they get
-     * munmap()'ed and then something else mapped at the same address, we
-     * will get erroneous data. */
-    /* We should have the executable open already -- find it. */
-    std::ostringstream filename;
-    filename << "/proc/" << m_pid << "/exe";
-    //char link_target[PATH_MAX];
-    //int retval;
-    //retval = readlink(filename.str().c_str(), link_target, PATH_MAX);
-    //assert(retval != -1);
-    char real_exec[PATH_MAX];
-    char *retpath;
-    retpath = realpath(/*link_target*/filename.str().c_str(), real_exec);
-    assert(retpath != NULL);
-    i_executable = files.end();
-    // HACK: we may have to go round twice, if we're racing
-    // with a child about to exec(): we won't find the executable
-    // first time, but assuming /proc/.../maps is replaced
-    // atomically, we will find it second time.
-    for (int j = 0; j < 2; j++)
-    {
-        for (auto i = files.begin(); i != files.end(); i++)
-        {
-    	    if (i->first == std::string(real_exec))
-            {
-			    /* Found the executable */
-                i_executable = i;
-                return;
-		    }
-	    }
-        if (i_executable == files.end() && j == 0)
-        {
-    	    rebuild_map();
-	    }    
-    }
-    assert(false);
+	/* FIXME: if a mapping goes away, we remove its entry but leave its 
+	 * file open. This does no harm, but would be nice to delete it. */
+	/* FIXME: we don't clear up anonymous mappings either, so if they get
+	 * munmap()'ed and then something else mapped at the same address, we
+	 * will get erroneous data. */
+	/* We should have the executable open already -- find it. */
+	std::ostringstream filename;
+	filename << "/proc/" << m_pid << "/exe";
+	//char link_target[PATH_MAX];
+	//int retval;
+	//retval = readlink(filename.str().c_str(), link_target, PATH_MAX);
+	//assert(retval != -1);
+	char real_exec[PATH_MAX];
+	char *retpath;
+	retpath = realpath(/*link_target*/filename.str().c_str(), real_exec);
+	assert(retpath != NULL);
+	i_executable = files.end();
+	// HACK: we may have to go round twice, if we're racing
+	// with a child about to exec(): we won't find the executable
+	// first time, but assuming /proc/.../maps is replaced
+	// atomically, we will find it second time.
+	for (int j = 0; j < 2; j++)
+	{
+		for (auto i = files.begin(); i != files.end(); ++i)
+		{
+			if (i->first == std::string(real_exec))
+			{
+				/* Found the executable */
+				i_executable = i;
+				return;
+			}
+		}
+		if (i_executable == files.end() && j == 0)
+		{
+			rebuild_map();
+		}	
+	}
+	assert(false);
 }
 
 void process_image::update_executable_elf()
 {
-    assert(i_executable != files.end());
-    int fd = fileno(*i_executable->second.p_if);
-    assert(fd != -1);
-    if (elf_version(EV_CURRENT) == EV_NONE)
+	assert(i_executable != files.end());
+	int fd = fileno(*i_executable->second.p_if);
+	assert(fd != -1);
+	if (elf_version(EV_CURRENT) == EV_NONE)
 	{
 		/* library out of date */
 		/* recover from error */
-        assert(0);
+		assert(0);
 	}
 	this->executable_elf = elf_begin(fd, ELF_C_READ, NULL);
 		
+}
+
+void process_image::update_intervals()
+{
+	
+	/* For each file we have loaded, reload its symbols. 
+	 * FIXME: this is a bit brutal. Can we exploit some
+	 * summary of the parts of the map that have changed? 
+	 * We could thread two more parameters through from update_map():
+	 * lines_deleted and lines_added. 
+	 * Like in a diff, a change is just a delete and an add.*/
+	intervals.clear();
+	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
+	{
+		pair<
+			concatenating_iterator<symbols_iterator>,
+			concatenating_iterator<symbols_iterator>
+		> syms = all_symbols(i_file);
+		
+		for (auto i_sym = syms.first; i_sym != syms.second; ++i_sym)
+		{
+			/* we only want defined nonnull syms */
+			if ((i_sym->st_value == 0) ||
+				(GELF_ST_BIND(i_sym->st_info)== STB_NUM) ||
+				(
+					(GELF_ST_TYPE(i_sym->st_info)!= STT_FUNC)
+					&& (GELF_ST_TYPE(i_sym->st_info)!= STT_OBJECT)
+					&& (GELF_ST_TYPE(i_sym->st_info)!= STT_COMMON) // FIXME: support TLS
+				)) continue;
+
+			
+			optional<decltype(i_sym)> opt_next_sym;
+			if (i_sym != syms.second) 
+			{ opt_next_sym = i_sym; ++(*opt_next_sym); }
+		
+			addr_t sym_value = i_sym->st_value;
+			optional<addr_t> opt_next_sym_value;
+			if (opt_next_sym) { opt_next_sym_value = (*opt_next_sym)->st_value; }
+			
+			intervals.insert(make_pair(
+				interval<addr_t>::right_open(
+					sym_value, 
+					opt_next_sym_value ? *opt_next_sym_value : sym_value
+				), 
+				interval_descriptor(i_sym.base())
+			));
+		}
+	}
+
 }
 
 process_image::addr_t process_image::get_dieset_base(dwarf::lib::abstract_dieset& ds)

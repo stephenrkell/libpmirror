@@ -9,6 +9,10 @@
 #ifdef MALLOC_USABLE_SIZE_HACK
 #include <dlfcn.h>
 #include "malloc_usable_size_hack.h"
+#else
+extern "C" {
+extern size_t malloc_usable_size(void *); /* we *must* have this function */
+}
 #endif
 #ifdef HAVE_DLADDR
 #include <dlfcn.h>
@@ -163,11 +167,26 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 			}
 			else
 			{
-				char *reported_error = dlerror();
-				cerr << "Failed to find a symbol preceding address 0x" 
-					<< std::hex << addr_to_test << std::dec 
-					<< " (error: " << string(reported_error ? reported_error : "(no error)") << ")" 
-					<< endl;
+				string symname;
+				bool success = this->nearest_preceding_symbol(addr_to_test,
+					&symname,
+					0,
+					0,
+					0
+				);
+				if (success)
+				{
+					assert(false); // FIXME: refactor the above
+				}
+				else
+				{
+
+					char *reported_error = dlerror();
+					cerr << "Failed to find a symbol preceding address 0x" 
+						<< std::hex << addr_to_test << std::dec 
+						<< " (error: " << string(reported_error ? reported_error : "(no error)") << ")" 
+						<< endl;
+				}
 			}
 		}
 	#endif

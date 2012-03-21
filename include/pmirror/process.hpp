@@ -15,6 +15,7 @@
 #include <boost/optional.hpp>
 #include <boost/graph/graph_traits.hpp>
 #include <boost/iterator_adaptors.hpp>
+#include <boost/icl/interval_map.hpp>
 
 #include <gelf.h>
 
@@ -38,6 +39,8 @@ extern "C" {
 #include "objdiscover.h"
 #include "addrmap.h"
 }
+
+#include "symbols.hpp"
 
 #include "unw_read_ptr.hpp"
 #include "unw_regs.hpp"
@@ -64,6 +67,8 @@ using std::pair;
 using std::make_pair;
 using std::map;
 using std::multimap;
+using boost::icl::interval_map;
+using boost::icl::interval;
 
 using srk31::concatenating_iterator;
 using srk31::concatenating_sequence;
@@ -71,100 +76,131 @@ using srk31::concatenating_sequence;
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */
 shared_ptr<basic_die> resolve_first(
-    vector<string> path,
-    vector<shared_ptr<with_named_children_die> > starting_points,
-    bool(*pred)(basic_die&) = 0);
+	vector<string> path,
+	vector<shared_ptr<with_named_children_die> > starting_points,
+	bool(*pred)(basic_die&) = 0);
 
 struct process_image
 {
-	/* We maintain a map of loaded objects, so that we can maintain
-     * a dieset open on each one. We must keep this map in sync with the
-     * actual process map. */
-    typedef unw_word_t addr_t;
+	typedef unw_word_t addr_t;
 	static_assert(sizeof (addr_t) >= sizeof (void*), "address size is too small");
-	typedef pair<addr_t, addr_t> entry_key;
-    
-    static const char *ANONYMOUS_REGION_FILENAME;
 
-    struct entry
-    {
-        char r, w, x, p;
-        int offset;
-        int maj, min;
-        int inode;
-        string seg_descr;
-    };
-//     enum memory_kind
-//     {
-// 	    UNKNOWN,
-//         STACK,
-//         HEAP,
-//         STATIC,
-//         ANON
-//     };
-	static const char *name_for_memory_kind(/*memory_kind*/ int k); // relaxation for ltrace++
-    
-    struct file_entry
-    {
+	/* We maintain a map of loaded objects, so that we can maintain
+	 * a dieset open on each one. We must keep this map in sync with the
+	 * actual process map. */
+	typedef pair<addr_t, addr_t> entry_key;
+	struct entry
+	{
+		char r, w, x, p;
+		int offset;
+		int maj, min;
+		int inode;
+		string seg_descr;
+	};
+	map<entry_key, entry> objects;
+	typedef map<entry_key, entry>::iterator objects_iterator;
+
+	/* We also maintain a map of canonicalised filenames
+	 * to the handles we have open on them: 
+	 * ifstream, a dwarf::lib::file and a dieset ptr. */
+	struct file_entry
+	{
 		shared_ptr<std::ifstream> p_if;
 		shared_ptr<lib::file> p_df;
 		shared_ptr<abstract_dieset> p_ds;
 		/* std::multimap<lib::Dwarf_Off, lib::Dwarf_Off> ds_type_containment; */
-    };
-    
-	map<entry_key, entry> objects;
-    typedef map<entry_key, entry>::iterator objects_iterator;
-    map<string, file_entry> files;
-    typedef map<string, file_entry>::iterator files_iterator;
-    
-    /* For each registered file that is an [anon] segment, we record its
-     * DWARF address separately. This is because addresses are process-relative
-     * in DwarfPython diesets. */
-    map<addr_t, addr_t> anon_segments_dwarf_bases;
-    // FIXME: we currently ignore the .second of these pairs -- just using it
-    // to track the known anonymous mappings
-    
-    /* Problem: all addresses could have i_file be the executable;
-     * do we want to support i_file being libraries too? Do we want
-     * a single vaddr to have multiple section_ and segment_addresses? */
-    struct section_address
-    { 
-    	files_iterator i_file;
-        string section_name;
-        GElf_Off offset; // offset in file? or in vaddr-space defined by ELF file?
-    };
-    struct segment_address
-    { 
-    	files_iterator i_file;
-        string segment_name;
-        GElf_Off offset; // offset in file? or in vaddr-space defined by ELF file?
-    };
-
+	};
+	map<string, file_entry> files;
+	typedef map<string, file_entry>::iterator files_iterator;
+	
+	/* To support DwarfPython and other use cases, the client can tell us
+	 * that an anonymous segment actually has some associated DWARF information.
+	 * These entries are stored in the files map too, although with null p_if. 
+	 * For each such registered segment, we record its DWARF base address, 
+	 * i.e. this need not correspond to the segment base address.
+	 * This is because addresses are absolute (process-relative) in DwarfPython diesets. */
+	map<addr_t, addr_t> anon_segments_dwarf_bases;
+	// FIXME: we currently ignore the .second of these pairs -- just using it
+	// to track the known anonymous mappings
+public:
+	void register_anon_segment_description(addr_t base, 
+		shared_ptr<abstract_dieset> p_ds,
+		addr_t base_for_dwarf_info);
+	void 
+	register_range_as_dieset(addr_t begin, addr_t end, 
+		shared_ptr<abstract_dieset> p_ds);
 private:
-	pid_t m_pid;
-	bool is_local;
+	
+	static const char *ANONYMOUS_REGION_FILENAME;
+private:
+	pid_t m_pid;   /* always set to the current pid */
+	bool is_local; /* whether m_pid == getpid() */
+	
 	unw_addr_space_t unw_as;
 	unw_accessors_t unw_accessors;
 	void *unw_priv;
 	unw_context_t unw_context;
+
 #ifndef NO_DL_ITERATE_PHDR
 	r_debug rdbg;
 #endif
+
+	/* The contents of /proc/<m_pid>/maps the last time we looked. */
 	vector<string> seen_map_lines;
 	files_iterator i_executable; // points to the files entry representing the executable
+	Elf *executable_elf; // an ELF handle on the executable
 	
-	static const char *alloc_list_lib_basename;
+	// FIXME: bring this heap metadata up-to-date with the memtable-based implementation
 	/* static const char *alloc_list_symname; */
+	static const char *alloc_list_lib_basename;
 	addr_t alloc_list_head_ptr_addr; // base address of data structure holding heap metadata
 
-	Elf *executable_elf;
-	// equivalence classes of data types -- 
-	// since according to our current definition, equivalent types always share
-	// a list of idents below the CU level
-	// (and we don't expect these to recur, although they theoretically could),
-	// make this a map from these ident lists to sets of abstract_dieset::positions
+	/* Query the files and objects maps. */
+public:
+	/* Lookup a file in the files map, given a possibly *non*-canonical filename. */
+	map<string, file_entry>::iterator find_file_by_realpath(
+		const string& path,
+		optional<map<string, file_entry>::iterator> begin_here = 
+			optional<map<string, file_entry>::iterator>()
+	);
 	
-	/* A cache of the location */
+	addr_t get_dieset_base(abstract_dieset& ds);
+	addr_t get_library_base(const string& path);
+
+	objects_iterator find_object_for_addr(unw_word_t addr);
+	files_iterator find_file_for_addr(unw_word_t addr);
+	
+	/* Query deeper static structure, using DWARF info. */
+public:
+	shared_ptr<basic_die> find_first_matching(
+		bool(*pred)(shared_ptr<basic_die>, void *pred_arg), void *pred_arg);
+
+private:
+	struct interval_descriptor
+	{
+		enum { DWARF_DESCRIPTOR, ELF_DESCRIPTOR } kind;
+		// union
+		// {
+			symbols_iterator elf_sym;
+			abstract_dieset::position_and_path dwarf_die;
+		// };
+		
+		interval_descriptor(const symbols_iterator& sym)
+		 : kind(ELF_DESCRIPTOR), elf_sym(sym),
+			dwarf_die((abstract_dieset::position){0, 0}) {}
+		interval_descriptor()
+		 : kind(ELF_DESCRIPTOR), elf_sym(),
+			dwarf_die((abstract_dieset::position){0, 0}) {}
+		bool operator==(const interval_descriptor& arg) const
+		{ return kind == arg.kind
+			&& ((kind == ELF_DESCRIPTOR)
+					? elf_sym == arg.elf_sym
+					: dwarf_die == arg.dwarf_die);
+		}
+	};
+	interval_map<addr_t, interval_descriptor> intervals;
+
+	/* FIXME: remove this once we have the interval tree to replace it. */
 	typedef map< 
 		pair< 
 			abstract_dieset::position_and_path, 
@@ -173,18 +209,24 @@ private:
 		abstract_dieset::position_and_path 
 	> location_refinements_cache_t;
 	location_refinements_cache_t location_refinements_cache;
+public:
 	
+	/* Single-step lookup. */
 	abstract_dieset::position_and_path
 	find_more_specific_die_for_dieset_relative_addr(
 		abstract_dieset::position_and_path under_here,
-    	unw_word_t addr);
-		
+		unw_word_t addr);
+	
+	/* DIE-predicated lookup of absolute addresses. */
+	// FIXME: there is a non-template function of the same name below...
 	template <typename Pred>
 	shared_ptr<with_static_location_die> 
 	find_containing_die_for_absolute_addr(
 		unw_word_t addr,
 		const Pred& pred,
 		bool innermost);
+
+	/* DIE-predicated lookup of relative addresses. */
 	template <typename Pred>
 	shared_ptr<with_static_location_die> 
 	find_containing_die_for_dieset_relative_addr(
@@ -193,7 +235,6 @@ private:
 		const Pred& pred,
 		bool innermost);
 
-public:
 	shared_ptr<subprogram_die> 
 	find_subprogram_for_absolute_ip(unw_word_t ip);
 	
@@ -203,21 +244,53 @@ public:
 	shared_ptr<with_static_location_die> 
 	find_containing_die_for_absolute_addr(unw_word_t addr, bool innermost);
 	
-    shared_ptr<with_static_location_die> 
+	shared_ptr<with_static_location_die> 
 	find_most_specific_die_for_absolute_addr(addr_t addr)
 	{ return find_containing_die_for_absolute_addr(addr, true); }
-
-    process_image(pid_t pid = -1);
-    void update();
-    ~process_image() { if (executable_elf) elf_end(executable_elf); }
-    
-	map<string, file_entry>::iterator find_file_by_realpath(
-		const string& path,
-		optional<map<string, file_entry>::iterator> begin_here = 
-			optional<map<string, file_entry>::iterator>()
-	);
 	
+	/* Query static or dynamic structure, using DWARF info. */
+public:
+	/* Discover the address of a program element given its DWARF info. */
+	addr_t 
+	get_object_from_die(shared_ptr<with_static_location_die> d,
+		lib::Dwarf_Addr vaddr);
+	
+	/* Discover the DWARF type of a program element (perhaps dynamic) given its address. */
+	shared_ptr<basic_die> 
+	discover_object_descr(addr_t addr,
+		shared_ptr<type_die> imprecise_static_type
+		 = shared_ptr<type_die>(),
+		addr_t *out_object_start_addr = 0);
+
+	/* Discover the DWARF description of a static program object given its address. */
+	shared_ptr<with_static_location_die> 
+	discover_object(
+		addr_t addr,
+		addr_t *out_object_start_addr);
+
+	/* Construction, update and destruction. */
+public:
+	process_image(pid_t pid = -1);
+	~process_image() { if (executable_elf) elf_end(executable_elf); }
+	
+	/* Re-scan for changes to the process's mappings. */
+	void update();
+private:
+	bool rebuild_map();
+	void update_rdbg();
+	void update_i_executable();
+	void update_executable_elf();
+	void update_intervals();
+
+	/* Classifying pointers by storage kind. */
+public:
 	typedef ::object_memory_kind memory_kind;
+private:
+	// slow but complete version
+	memory_kind discover_object_memory_kind_from_maps(addr_t addr) const;
+public:
+	static const char *name_for_memory_kind(/*memory_kind*/ int k); // relaxation for ltrace++
+
 	memory_kind discover_object_memory_kind(addr_t addr) const
 	{
 		if (is_local)
@@ -234,51 +307,23 @@ public:
 		// fall back on the maps version
 		return discover_object_memory_kind_from_maps(addr);
 	}
-	// slower version using maps info
-	memory_kind discover_object_memory_kind_from_maps(addr_t addr) const;
-	
-    addr_t get_dieset_base(abstract_dieset& ds);
-    addr_t get_library_base(const string& path);
 
-    void register_anon_segment_description(addr_t base, 
-        shared_ptr<abstract_dieset> p_ds,
-        addr_t base_for_dwarf_info);
-
-	typedef with_static_location_die::sym_binding_t sym_binding_t;
-    //sym_binding_t resolve_symbol(files_iterator file, const string& sym);
-	//sym_binding_t resolve_symbol(
-	//	const string& sym, void *p_file_iterator_void);
-    
-	typedef int (*stack_frame_cb_t)(process_image *image,
-    	unw_word_t frame_sp, unw_word_t frame_ip, 
-		const char *frame_proc_name,
-		unw_word_t frame_caller_sp,
-		unw_word_t frame_caller_ip,
-		unw_word_t frame_callee_ip,
-        unw_cursor_t frame_cursor,
-        unw_cursor_t frame_callee_cursor,
-        void *arg);
-    int walk_stack(void *stack_handle, stack_frame_cb_t handler, void *handler_arg);
-    
-    shared_ptr<basic_die> find_first_matching(
-        bool(*pred)(shared_ptr<basic_die>, void *pred_arg), void *pred_arg);
-    
-	objects_iterator find_object_for_addr(unw_word_t addr);
-    files_iterator find_file_for_addr(unw_word_t addr);
-
+	/* Reading the dynamic linker map. */
 private:
 	// typedefs for accessing the link map in the target process
-    typedef unw_read_ptr<link_map> lm_ptr_t;
-    typedef unw_read_ptr<char> remote_char_ptr_t;
+	typedef unw_read_ptr<link_map> lm_ptr_t;
+	typedef unw_read_ptr<char> remote_char_ptr_t;
 
-    addr_t get_library_base_local(const string& path);
-    addr_t get_library_base_remote(const string& path);
-    addr_t get_library_base_from_maps(const string& path);
-    bool rebuild_map();
-    void update_rdbg();
-    void update_i_executable();
-    void update_executable_elf();
-	/* void update_master_type_containment();
+	addr_t get_library_base_local(const string& path);
+	addr_t get_library_base_remote(const string& path);
+	addr_t get_library_base_from_maps(const string& path);
+
+	// equivalence classes of data types -- 
+	// since according to our current definition, equivalent types always share
+	// a list of idents below the CU level
+	// (and we don't expect these to recur, although they theoretically could),
+	// make this a map from these ident lists to sets of abstract_dieset::positions
+		/* void update_master_type_containment();
 	void update_master_type_equivalence();
 	
 	virtual bool type_equivalence(shared_ptr<type_die> t1,
@@ -288,45 +333,52 @@ private:
 		multimap<lib::Dwarf_Off, lib::Dwarf_Off>& out_mm,
 		spec::abstract_dieset& ds); */
 public:
-	void 
-	register_range_as_dieset(addr_t begin, addr_t end, 
-    	shared_ptr<abstract_dieset> p_ds);
+	/* Try to produce a human-readable representation of an object. */
+	std::ostream& print_object(std::ostream& s, void *obj) const;
 
-	addr_t 
-	get_object_from_die(shared_ptr<with_static_location_die> d,
-		lib::Dwarf_Addr vaddr);
-		
-    shared_ptr<basic_die> 
-	discover_object_descr(addr_t addr,
-    	shared_ptr<type_die> imprecise_static_type
-         = shared_ptr<type_die>(),
-        addr_t *out_object_start_addr = 0);
-
-    shared_ptr<with_dynamic_location_die> 
+	/* Stack walking. */
+public:
+	shared_ptr<with_dynamic_location_die> 
 	discover_stack_object(addr_t addr,
-        addr_t *out_object_start_addr,
+		addr_t *out_object_start_addr,
 		addr_t *out_frame_base,
 		addr_t *out_frame_return_addr
 	);
+	
+	typedef int (*stack_frame_cb_t)(process_image *image,
+		unw_word_t frame_sp, unw_word_t frame_ip, 
+		const char *frame_proc_name,
+		unw_word_t frame_caller_sp,
+		unw_word_t frame_caller_ip,
+		unw_word_t frame_callee_ip,
+		unw_cursor_t frame_cursor,
+		unw_cursor_t frame_callee_cursor,
+		void *arg);
+	int walk_stack(void *stack_handle, stack_frame_cb_t handler, void *handler_arg);
+	
 
 private:
-    shared_ptr<with_dynamic_location_die> 
+	shared_ptr<with_dynamic_location_die> 
 	discover_stack_object_local(
-    	addr_t addr, 
+		addr_t addr, 
 		addr_t *out_object_start_addr,
 		addr_t *out_frame_base,
 		addr_t *out_frame_return_addr
 	);
 		
-    shared_ptr<with_dynamic_location_die> 
+	shared_ptr<with_dynamic_location_die> 
 	discover_stack_object_remote(
-    	addr_t addr, 
+		addr_t addr, 
 		addr_t *out_object_start_addr,
 		addr_t *out_frame_base,
 		addr_t *out_frame_return_addr
 	);
-		
+	
+	/* Heap query. */
 public:
+	/* Clients can tell us the DWARF type of arbitrary objects,
+	 * overriding whatever we thought was there,
+	 * for subsequent calls to discover_object_descr. */
 	void 
 	inform_heap_object_descr(
 		addr_t addr,
@@ -334,134 +386,47 @@ public:
 private:
 	map<addr_t, shared_ptr<type_die> > informed_heap_descrs;
 
-    shared_ptr<basic_die> 
+	shared_ptr<basic_die> 
 	discover_heap_object(addr_t addr,
-    	shared_ptr<type_die> imprecise_static_type,
-        addr_t *out_object_start_addr);
+		shared_ptr<type_die> imprecise_static_type,
+		addr_t *out_object_start_addr);
 		
-    shared_ptr<basic_die>
+	shared_ptr<basic_die>
 	discover_heap_object_local(addr_t addr,
-    	shared_ptr<type_die> imprecise_static_type,
-        addr_t *out_object_start_addr);
+		shared_ptr<type_die> imprecise_static_type,
+		addr_t *out_object_start_addr);
 		
-    shared_ptr<basic_die> 
+	shared_ptr<basic_die> 
 	discover_heap_object_remote(addr_t addr,
-    	shared_ptr<type_die> imprecise_static_type,
-        addr_t *out_object_start_addr);
+		shared_ptr<type_die> imprecise_static_type,
+		addr_t *out_object_start_addr);
 
+	/* Symbols and linker-related functions. */
 public:
-    shared_ptr<with_static_location_die> 
-	discover_object(
-    	addr_t addr,
-        addr_t *out_object_start_addr);
-	
-	std::ostream& print_object(std::ostream& s, void *obj) const;
-
 #ifndef NO_DL_ITERATE_PHDR
-    std::pair<GElf_Shdr, GElf_Phdr> get_static_memory_elf_headers(addr_t addr);
-    // various ELF conveniences
-    bool is_linker_code(addr_t addr)
-    {	
-    	auto kind = get_static_memory_elf_headers(addr);
-    	return kind.first.sh_type == SHT_PROGBITS // FIXME: this is WRONG!
-         && kind.second.p_type == PT_LOAD
-         && (kind.second.p_flags & PF_X);
-    }
+	std::pair<GElf_Shdr, GElf_Phdr> get_static_memory_elf_headers(addr_t addr);
+	/* We want this to help us handle the case of unwinding a call 
+	 * routed through the PLT, which will sometimes give bad unwind info.
+	 * For now, it doesn't work. */
+	bool is_linker_code(addr_t addr)
+	{	
+		auto kind = get_static_memory_elf_headers(addr);
+		return kind.first.sh_type == SHT_PROGBITS // FIXME: this is WRONG!
+		 && kind.second.p_type == PT_LOAD
+		 && (kind.second.p_flags & PF_X);
+	}
 #endif
-    string nearest_preceding_symbol(addr_t addr); // FIXME: implement this
 
-	struct symbols_iteration_state
-	{
-		Elf *elf;
-		Elf_Scn *scn;
-		GElf_Shdr shdr;
-		Elf_Data *data;
-		void *firstsym;
-		void *lastsym;
-		unsigned symcount;
-
-		symbols_iteration_state(const process_image::files_iterator& i,
-			Elf64_Word sh_type = SHT_DYNSYM);
-		~symbols_iteration_state();
-	};
+	typedef with_static_location_die::sym_binding_t sym_binding_t;
+	// ^-- this is a pair: file-relative symbol start addr, and symbol size
 	
-	// NO! We can't do this, because it violates the portable usage of gelf.
-	// We can't just increment a GElf_Sym* -- it will over-increment on 32-bit
-	// platforms. 
-	// typedef GElf_Sym *symbols_iterator_base;
-	struct symbols_iterator_base 
-	{ 
-		unsigned pos; 
-		bool operator==(const symbols_iterator_base& arg) const 
-		{ return this->pos == arg.pos; }
-	};
-	
-	struct symbols_iterator
-	: public boost::iterator_adaptor<symbols_iterator,
-		symbols_iterator_base,  // Base
-		GElf_Sym, // Value
-		boost::random_access_traversal_tag, // Traversal
-		GElf_Sym, // Reference -- like value because we can't write through a GElf_Sym
-		signed // Difference
-	>
-	{
-		typedef symbols_iterator_base Base;
-		
-		typedef boost::iterator_adaptor<
-			symbols_iterator, 
-			symbols_iterator_base,
-			GElf_Sym,
-			boost::random_access_traversal_tag,
-			GElf_Sym,
-			signed
-		> super;
-		
-		typedef symbols_iterator self;
-		
-		shared_ptr<symbols_iteration_state> origin;
-		
-		symbols_iterator(Base p, shared_ptr<symbols_iteration_state> origin)
-		 : super(p), origin(origin) {}
-
-		symbols_iterator() // no state
-		 : super((symbols_iterator_base){ 0 }), origin() 
-		 {
-		 	cerr << "Warning: null symbol iterator constructed" << endl;
-		 }
-		
-		//GElf_Sym& dereference() const
-		GElf_Sym dereference() const
-		{
-			GElf_Sym sym;
-			gelf_getsym(origin->data, base().pos, &sym);
-			return sym;
-		}
-		
-		void increment()
-		{
-			++base_reference().pos;
-		}
-		void decrement()
-		{
-			--base_reference().pos;
-		}
-		
-		typedef signed difference_type;
-		void advance(difference_type n)
-		{
-			base_reference().pos += n;
-		}
-		
-		difference_type
-		distance_to(
-			self const& other
-		)
-		{
-			return other.base_reference().pos - this->base_reference().pos;
-		}
-
-	};
-	
+	bool  
+	nearest_preceding_symbol(addr_t addr,
+		string *out_sym_name,
+		addr_t *out_sym_start,
+		size_t *out_sym_size,
+		string *out_object_fname
+	); // FIXME: implement this
 	
 	// NOTE: this makes a great example of lightweight data abstraction!
 	// We want symbols_iterator to inherit the concepts of esym,
@@ -470,7 +435,10 @@ public:
 	pair<symbols_iterator, symbols_iterator> symbols(process_image::files_iterator& i,
 		Elf64_Word sh_type = SHT_DYNSYM)
 	{
-		auto p_priv = boost::make_shared<symbols_iteration_state>(i, sh_type);
+		Elf *e = 0;
+		if (i->second.p_df) { i->second.p_df->get_elf(&e); }
+		// if we have no df, e will be null and we will get an empty sequence
+		auto p_priv = boost::make_shared<symbols_iteration_state>(e, sh_type);
 		symbols_iterator begin((symbols_iterator_base){ 0 }, p_priv);
 		symbols_iterator end((symbols_iterator_base){ p_priv->symcount }, p_priv);
 		return make_pair(begin, end);
@@ -521,43 +489,43 @@ public:
 		);
 		
 	}
-	
-
 };
 
-process_image::sym_binding_t resolve_symbol_from_process_image(
-	const string& sym, void *p_pair);
+/* Stack walking callbacks and their argument. */
 int stack_print_handler(process_image *image,
 		unw_word_t frame_sp, unw_word_t frame_ip, 
 		const char *frame_proc_name,
 		unw_word_t frame_caller_sp,
 		unw_word_t frame_caller_ip,
 		unw_word_t frame_callee_ip,
-        unw_cursor_t frame_cursor,
-        unw_cursor_t frame_callee_cursor,
-        void *arg);
+		unw_cursor_t frame_cursor,
+		unw_cursor_t frame_callee_cursor,
+		void *arg);
 int stack_object_discovery_handler(process_image *image,
 		unw_word_t frame_sp, unw_word_t frame_ip, 
 		const char *frame_proc_name,
 		unw_word_t frame_caller_sp,
 		unw_word_t frame_caller_ip,
 		unw_word_t frame_callee_ip,
-        unw_cursor_t frame_cursor,
-        unw_cursor_t frame_callee_cursor,
-        void *arg);
+		unw_cursor_t frame_cursor,
+		unw_cursor_t frame_callee_cursor,
+		void *arg);
 struct stack_object_discovery_handler_arg
 {
 	// in
 	process_image::addr_t addr;
-    // out
-    shared_ptr<with_dynamic_location_die> discovered_die;
-    process_image::addr_t object_start_addr;
-    process_image::addr_t frame_base;
-    process_image::addr_t frame_return_addr;
-	
-};        
+	// out
+	shared_ptr<with_dynamic_location_die> discovered_die;
+	process_image::addr_t object_start_addr;
+	process_image::addr_t frame_base;
+	process_image::addr_t frame_return_addr;
+};
 
 typedef process_image::addr_t addr_t;
+
+process_image::sym_binding_t resolve_symbol_from_process_image(
+	const string& sym, void *p_pair);
+
 std::ostream& operator<<(std::ostream& s, const process_image::memory_kind& k);
 
 } // end namespace pmirror

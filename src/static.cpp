@@ -34,6 +34,45 @@ using dwarf::spec::variable_die;
 using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
+/* Rethinking static object location. 
+ * Given an address, we want the ability to discover 
+ * - DWARF information for the object(s) overlapping that address
+ * - linker symbols for the object(s) overlapping that address.
+ * Queries might ask for the innermost object
+ * (almost equivalent to "smallest"),
+ * outermost, 
+ * next-under, etc.
+ *
+ * The linker case is complicated by the fact that symbols actually
+ * denote just an address, but often (not always) logically denote regions
+ * based at that address. So to turn them into objects requires
+ * some sort of heuristic for the "length" of each symbol. For the
+ * moment, we ignore this problem and just assume that symbols
+ * define a flat partitioning of the address space.
+ *
+ * The debug case is complicated by the fact that don't want to keep
+ * open the DIE handles on all the DIEs denoting static objects. 
+ * We can just store position_and_path objects I guess.
+ * 
+ * Let's suppose we have an interval tree which allows repeated nesting
+ * i.e. we can have interval (a, b) underneath (a, b).
+ * Each node in the tree is labelled with 
+ * a symbol reference (probably GElf_Sym or an Elf_Data, symnum pair)
+ * or
+ * a DIE position_and_path, 
+ * meaning that the referenced DIE includes the treenode's range
+ * (i.e. precisely ).
+ * This might be somewhat space-inefficient in the case of CU DIEs that have
+ * thousands of entries in their rangelists.
+ * However, it should be time-efficient for lookups, since we have effectively
+ * pre-fragmented the space into divisions that are meaningful,
+ * so are likely to cleanly include the intervals of deeper DIEs (subprograms, variables).
+ *
+ * First pass: we implement the interval tree for ELF symbols only, so that
+ * we can reimplement dladdr() (which is not available on some systems, nor for
+ * statically linked binaries).
+ */
+
 process_image::objects_iterator 
 process_image::find_object_for_addr(unw_word_t addr)
 {
@@ -47,6 +86,32 @@ process_image::find_object_for_addr(unw_word_t addr)
         }
     }
 	return objects.end();
+}
+
+bool
+process_image::nearest_preceding_symbol(addr_t addr,
+	string *out_sym_name,
+	addr_t *out_sym_start,
+	size_t *out_sym_size,
+	string *out_object_fname
+)
+{
+	auto found = intervals.find(interval<addr_t>::right_open(addr, addr));
+	/* FIXME: if we succeeded, we also want to return the object filename
+	 * and its base address, like dladdr() does. */
+	/* FIXME: want to get not just any old interval, but *all* intervals
+	 * overlapping our addr, then find the ELF interval.s */
+	if (found != intervals.end())
+	{
+		assert(found->second.kind == interval_descriptor::ELF_DESCRIPTOR);
+		auto symname = found->second.elf_sym.get_symname();
+		if (out_sym_name && symname) *out_sym_name = *symname;
+		assert(!out_sym_start);
+		assert(!out_sym_size);
+		assert(!out_object_fname);
+		return true;
+	}
+	return false ;//optional<optional<string> >();
 }
 
 process_image::files_iterator 
