@@ -6,6 +6,10 @@
 #define _GNU_SOURCE
 #endif
 #include <malloc.h>
+#ifdef MALLOC_USABLE_SIZE_HACK
+#include <dlfcn.h>
+#include "malloc_usable_size_hack.h"
+#endif
 #ifdef HAVE_DLADDR
 #include <dlfcn.h>
 #endif
@@ -71,11 +75,22 @@ process_image::discover_heap_object(addr_t heap_loc,
 }
 
 /* Hard-coded table of allocation sites.
- * NOTE: if we want to support >1 allocation type per function,
- * and 
+ * NOTE: since we want to support >1 allocation type per function,
+ * we also index the table by the object size. BUT there's a complication:
+ * dlmalloc (and other mallocs) don't remember the precise object size,
+ * just the size after padding for the allocator's alignment (e.g. 1 word).
+ * We increment by our trailer size before this padding happens. Then this
+ * incremented size is what's padded. 
  *  */
-static map<string, vector<string> > allocsite_typenames = {
-	{ "makefooblahfunc", (vector<string>){ "foo", "blah" } }
+
+#define PAD_TO_NBYTES(s, n) (((s) % (n) == 0) ? (s) : ((((s) / (n)) + 1) * (n)))
+#define USABLE_SIZE_FROM_OBJECT_SIZE(s) (PAD_TO_NBYTES((s) + sizeof (struct trailer) , 4))
+#define HEAPSZ_ONE(t) (USABLE_SIZE_FROM_OBJECT_SIZE(sizeof ((t))))
+
+static map<pair<string, size_t>, vector<string> > allocsite_typenames = {
+	{ { "_puffs_init", 1102 /* HEAPSZ_ONE(puffs_usermount)*/ }, (vector<string>){ "puffs_usermount" } },
+	{ { "_puffs_init", 3382 /* HEAPSZ_ONE(puffs_kargs)*/ }, (vector<string>){ "puffs_kargs" } },
+	{ { "makefooblahfunc", 42 }, (vector<string>){ "foo", "blah" } }
 };
 
 boost::shared_ptr<dwarf::spec::basic_die> 
@@ -95,63 +110,105 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 		return shared_ptr<dwarf::spec::basic_die>();
 	}
 	void *alloc_site = (void *) ret->alloc_site;
-#if HAVE_DLADDR
-	/* 2. Guess what DWARF types were allocated at that allocation site. */
-	shared_ptr<type_die> alloc_t;
-	#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
-	for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
+	size_t usable_size = malloc_usable_size(reinterpret_cast<void*>(heap_loc));
+	size_t object_size = usable_size - sizeof (struct trailer);
+	cerr << "Considering object at " << (void*)heap_loc << endl;
+	cerr << "Usable size is " << usable_size << " bytes." << endl;
+	cerr << "Object size is " << object_size << " bytes." << endl;
+	if (usable_size < 1UL<<29) // sizes >= 512MB are not sane
 	{
-		addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
-		Dl_info dli;
-		/* clear dlerror() */
-		dlerror();
-		int err = dladdr(reinterpret_cast<void*>(addr_to_test), &dli);
-		if (err != 0) /* note unusual error reporting convention */
+#if HAVE_DLADDR
+		/* 2. Guess what DWARF types were allocated at that allocation site. */
+		shared_ptr<type_die> alloc_t;
+		#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
+		for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
 		{
-			auto found = allocsite_typenames.find(dli.dli_sname);
-			if (found != allocsite_typenames.end())
+			addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
+			Dl_info dli;
+			/* clear dlerror() */
+			dlerror();
+			int err = dladdr(reinterpret_cast<void*>(addr_to_test), &dli);
+			if (err != 0) /* note unusual error reporting convention */
 			{
-				auto &vec = found->second;
-
-				// which function allocated the object?
-				auto subp = discover_object_descr((addr_t) addr_to_test);
-				assert(subp && subp->get_tag() == DW_TAG_subprogram);
-				auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
-				assert(t);
-				alloc_t = dynamic_pointer_cast<type_die>(t);
-				if (alloc_t) 
+				auto found = allocsite_typenames.find(
+					make_pair(dli.dli_sname, object_size));
+				if (found != allocsite_typenames.end())
 				{
+					auto &vec = found->second;
 
-					// FIXME: now install this into the record
-					// ret->alloc_site_flag = 1;
-					// ret->alloc_site = reinterpret_cast<intptr_t>(&vec->second);
-					// FIXME: now use the flag when doing lookup
+					// which function allocated the object?
+					auto subp = discover_object_descr((addr_t) addr_to_test);
+					assert(subp && subp->get_tag() == DW_TAG_subprogram);
+					auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
+					assert(t);
+					alloc_t = dynamic_pointer_cast<type_die>(t);
+					if (alloc_t) 
+					{
 
-					// return
-					return alloc_t;
+						// FIXME: now install this into the record
+						// ret->alloc_site_flag = 1;
+						// ret->alloc_site = reinterpret_cast<intptr_t>(&vec->second);
+						// FIXME: now use the flag when doing lookup
+
+						// return
+						return alloc_t;
+					}
+				}
+				else
+				{
+					cerr << "Failed to recognise allocsite 0x" << std::hex << addr_to_test << std::dec
+						<< " (symbol: " << dli.dli_sname << ", object: " << dli.dli_fname 
+							<< ", object size: " << object_size << ")" << endl;
 				}
 			}
 			else
 			{
-				cerr << "Failed to recognise allocsite 0x" << std::hex << addr_to_test << std::dec
-					<< " (symbol: " << dli.dli_sname << ", object: " << dli.dli_fname << ")" << endl;
+				char *reported_error = dlerror();
+				cerr << "Failed to find a symbol preceding address 0x" 
+					<< std::hex << addr_to_test << std::dec 
+					<< " (error: " << string(reported_error ? reported_error : "(no error)") << ")" 
+					<< endl;
 			}
 		}
-		else
+	#endif
+
+		/* 2. Guess what DWARF types were allocated at that allocation site. */
+		cerr << "Heap object discovery not supported for " << (void*)heap_loc << endl;
+		cerr << "Caller supplied imprecise static type: " 
+			<< (imprecise_static_type ? imprecise_static_type->summary() : "(none)") << endl;
+		if (imprecise_static_type)
 		{
-			char *reported_error = dlerror();
-			cerr << "Failed to find a symbol preceding address 0x" 
-				<< std::hex << addr_to_test << std::dec 
-				<< " (error: " << string(reported_error ? reported_error : "(no error)") << ")" 
-				<< endl;
+			cerr << "Imprecise type has ";
+			auto opt_sz = imprecise_static_type->calculate_byte_size();
+			if (opt_sz) cerr << "size " << *opt_sz << " bytes.";
+			else cerr << "indeterminate size.";
+			cerr << endl;
+
+			if (opt_sz)
+			{
+				auto expected_usable_size = USABLE_SIZE_FROM_OBJECT_SIZE(*opt_sz);
+				cerr << "One instance of this, with trailer and padding, comes to " 
+					<< expected_usable_size << " bytes." << endl;
+				if (expected_usable_size == usable_size) 
+				{
+					cerr << "Sizes match, so going with the caller-supplied type." << endl;
+					return imprecise_static_type;
+				}
+				else
+				{
+					// FIXME!
+					cerr << "WARNING: sizes don't match, but going with caller-supplied anyway."
+						<< endl;
+					return imprecise_static_type;
+				}
+			}
 		}
 	}
-#endif
-	
-	/* 2. Guess what DWARF types were allocated at that allocation site. */
-	cerr << "Heap object discovery not supported for " << (void*)heap_loc << endl;
-	cerr << "Caller supplied imprecise static type: " 
-		<< (imprecise_static_type ? imprecise_static_type->summary() : "(none)") << endl;
+	else // usable_size is >= 512MB
+	{
+		cerr << "Usable size is not sane: " << usable_size << endl;
+		return imprecise_static_type;
+	}
 	assert(false);
 	
 }

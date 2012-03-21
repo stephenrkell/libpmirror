@@ -332,9 +332,14 @@ process_image::find_containing_die_for_dieset_relative_addr(
 	if (last_to_satisfy == ds.end().base()) return shared_ptr<with_static_location_die>();
 	else
 	{
-		auto retval = dynamic_pointer_cast<with_static_location_die>(
-			(*last_to_satisfy.p_ds)[last_to_satisfy.off]);
-		assert(retval);
+		auto found = (*last_to_satisfy.p_ds)[last_to_satisfy.off];
+		assert(found);
+		auto retval = dynamic_pointer_cast<with_static_location_die>(found);
+		if (!retval)
+		{
+			cerr << "Found unexpected DIE for static object: " << found->summary() << endl;
+			assert(false);
+		}
 		return retval;
 	}
 }

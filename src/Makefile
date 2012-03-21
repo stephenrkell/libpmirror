@@ -12,12 +12,19 @@ LDFLAGS += -L. -Wl,-R$(realpath .) -L../lib -Wl,-R$(realpath ../lib)
 
 default: \
 libpmirror.so \
+libpmirror.a \
 libheap_index_hooks.so \
 libheap_index_fast_hooks.so \
 libheap_index_preload_hooks.so \
 libheap_index_preload_fast_hooks.so \
+libheap_index_wrap_hooks.a \
 librtti.so \
-libreflect.so
+libreflect.so \
+libreflect.a
+
+# libheap_index_wrap_fast_hooks.a \
+
+vpath %.c $(MALLOC_HOOKS)
 
 CC_SRC := self-image.cc
 CPP_SRC := process.cpp stack.cpp heap.cpp static.cpp discover.cpp symbols.cpp map.cpp print.cpp
@@ -58,12 +65,15 @@ librtti.so: librtti.cpp libreflect.so
 	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) -lreflect 
 libreflect.so: self-image.o
 	$(CXX) -shared -o "$@" $(CXXFLAGS) "$<" $(LDFLAGS) #$(UNWIND_LDLIBS)
+libreflect.a: self-image.o
+	ar r "$@" $^
 
 # First include the rules without the fancy CFLAGS.
 # This builds a lean, mean set of hooks libraries.
 libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
 
+# FIXME: replace this with use of the Makerules in libmallochooks
 comma := ,
 libheap_index_preload_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
 	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
@@ -71,14 +81,21 @@ libheap_index_preload_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.
 	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
 	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
 	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \
-	$(MALLOC_HOOKS)/toplevel_init.c $(MALLOC_HOOKS)/linker_glue.c $(MALLOC_HOOKS)/early_malloc.c 
+	$(MALLOC_HOOKS)/toplevel_init.c $(MALLOC_HOOKS)/dynamic_linker_glue.c \
+	$(MALLOC_HOOKS)/common_linker_glue.c $(MALLOC_HOOKS)/early_malloc.c 
 libheap_index_preload_fast_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
 	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
 	 -shared -g -fpic -o "$@" $(COMMON_CFLAGS) -O4 -DNDEBUG=1 "$<" \
 	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
 	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
 	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \
-	$(MALLOC_HOOKS)/toplevel_init.c $(MALLOC_HOOKS)/linker_glue.c $(MALLOC_HOOKS)/early_malloc.c \
+	$(MALLOC_HOOKS)/toplevel_init.c $(MALLOC_HOOKS)/dynamic_linker_glue.c \
+	$(MALLOC_HOOKS)/common_linker_glue.c $(MALLOC_HOOKS)/early_malloc.c 
+libheap_index_wrap_hooks.o: heap_index_hooks.c 
+	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_wrap.c"\" \
+	 -c -g -o $@ $(CFLAGS) $<
+libheap_index_wrap_hooks.a: libheap_index_wrap_hooks.o toplevel_init.o static_linker_glue.o common_linker_glue.o
+	ar r "$@" $^
 	
 
 libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
@@ -93,9 +110,12 @@ libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 # *also* a user-defined amount of padding (to be defined by a separate structure)?
 # But this has to be available early enough that the very first mallocs get it.
 # UNLESS we store the padding size in the trailer! This sounds good.
-libpmirror.so: $(CPP_OBJS) | libheap_index_fast_hooks.so #heap_index_hooks_with_type.o
+libpmirror.so: $(CPP_OBJS) | libheap_index_fast_hooks.so 
 	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ $(LIBDL_LDLIBS) -L. -Wl,-R$$(pwd) $(UNWIND_LDLIBS) 
 #-lheap_index_fast_hooks #-ldwarf 
+
+libpmirror.a: $(CPP_OBJS)
+	ar r "$@" $^
 
 heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(CFLAGS) -c -o "$@" "$<"
