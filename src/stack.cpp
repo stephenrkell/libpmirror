@@ -242,10 +242,9 @@ int stack_object_discovery_handler(process_image *image,
 		}
 		else
 		{
+			cerr << "Frame callee is subprogram " << callee_subp->summary() << endl;
 			process_image::addr_t dieset_base = image->get_dieset_base(callee_subp->get_ds());
 			unw_word_t dieset_relative_ip = frame_callee_ip - dieset_base;
-			//unw_word_t dieset_relative_addr = reinterpret_cast<unw_word_t>(addr)
-			// - reinterpret_cast<unw_word_t>(dieset_base);
 			libunwind_regs my_regs(&frame_callee_cursor); 
 			dwarf::lib::Dwarf_Signed frame_base;
 			// warn about variadic omission

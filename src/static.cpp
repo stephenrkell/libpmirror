@@ -11,6 +11,7 @@
 #include <gelf.h>
 
 #include <srk31/ordinal.hpp>
+#include <srk31/algorithm.hpp>
 
 namespace pmirror {
 
@@ -96,22 +97,41 @@ process_image::nearest_preceding_symbol(addr_t addr,
 	string *out_object_fname
 )
 {
-	auto found = intervals.find(/*interval<addr_t>::right_open(addr, addr)*/ addr);
-	/* FIXME: if we succeeded, we also want to return the object filename
-	 * and its base address, like dladdr() does. */
-	/* FIXME: want to get not just any old interval, but *all* intervals
-	 * overlapping our addr, then find the ELF interval.s */
-	if (found != intervals.end())
+	// HACK: disable the intervals-based impl for now
+// 	auto found = intervals.find(/*interval<addr_t>::right_open(addr, addr)*/ addr);
+// 	/* FIXME: if we succeeded, we also want to return the object filename
+// 	 * and its base address, like dladdr() does. */
+// 	/* FIXME: want to get not just any old interval, but *all* intervals
+// 	 * overlapping our addr, then find the ELF interval.s */
+// 	if (found != intervals.end())
+// 	{
+// 		assert(found->second.kind == interval_descriptor::ELF_DESCRIPTOR);
+// 		auto symname = found->second.elf_sym.get_symname();
+// 		if (out_sym_name && symname) *out_sym_name = *symname;
+// 		assert(!out_sym_start);
+// 		assert(!out_sym_size);
+// 		assert(!out_object_fname);
+// 		return true;
+// 	}
+// 	return false ;//optional<optional<string> >();
+
+	cerr << "Addr is 0x" << std::hex << addr << std::dec << endl;
+
+	/* This gives us either a direct hit on addr, or the next symbol *past* addr. */
+	auto result = srk31::greatest_le(
+		addr_to_sym_map.begin(),
+		addr_to_sym_map.end(),
+		make_pair(addr, (const char *) 0),
+		addr_to_sym_map.value_comp()
+	);
+	if (result != addr_to_sym_map.end())
 	{
-		assert(found->second.kind == interval_descriptor::ELF_DESCRIPTOR);
-		auto symname = found->second.elf_sym.get_symname();
-		if (out_sym_name && symname) *out_sym_name = *symname;
+		*out_sym_name = result->second ? string(result->second) : string();
 		assert(!out_sym_start);
 		assert(!out_sym_size);
 		assert(!out_object_fname);
 		return true;
-	}
-	return false ;//optional<optional<string> >();
+	} else return false;
 }
 
 process_image::files_iterator 

@@ -172,12 +172,8 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				}
 				else
 				{
-
-					char *reported_error = dlerror();
 					cerr << "Failed to find a symbol preceding address 0x" 
-						<< std::hex << addr_to_test << std::dec 
-						<< " (error: " << string(reported_error ? reported_error : "(no error)") << ")" 
-						<< endl;
+						<< std::hex << addr_to_test << std::dec << std::endl;
 				}
 			}
 		}

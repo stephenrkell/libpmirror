@@ -202,7 +202,12 @@ private:
 					: dwarf_die == arg.dwarf_die);
 		}
 	};
+	// FIXME: split into "ELF intervals" (linker-level)
+	// and "DWARF intervals" (source-level)
+	// -- if we want both views (rare) we can do two queries
 	interval_map<addr_t, interval_descriptor> intervals;
+	// HACK: while intervals is behaving strangely
+	map<addr_t, const char * > addr_to_sym_map;
 
 	/* FIXME: remove this once we have the interval tree to replace it. */
 	typedef map< 

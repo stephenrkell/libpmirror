@@ -120,8 +120,8 @@ namespace pmirror
 			return other.base_reference().pos - this->base_reference().pos;
 		}
 		
-		optional<string>
-		get_symname() const
+		const char *
+		get_strptr() const
 		{
 			assert(origin->firstsym);
 			assert(origin->lastsym);
@@ -129,10 +129,16 @@ namespace pmirror
 			auto strptr = elf_strptr(origin->elf,
 				origin->shdr.sh_link, 
 				dereference().st_name);
+			return strptr;
+		}
+		
+		optional<string>
+		get_symname() const
+		{
+			auto strptr = get_strptr();
 			if (strptr) return string(strptr);
 			else return optional<string>();
 		}
-
 	};
 }
 

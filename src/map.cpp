@@ -304,11 +304,11 @@ void process_image::update_intervals()
 				
 			addr_t sym_value = i_sym->st_value;
 			
-			cerr << "Calculated that symbol " 
-				<< (i_sym./*base().*/get_symname() ? *i_sym./*base().*/get_symname() : "(no name)")
-				<< " has address 0x" 
-				<< std::hex << sym_value << std::dec
-				<< endl;
+			//cerr << "Calculated that symbol " 
+			//	<< (i_sym./*base().*/get_symname() ? *i_sym./*base().*/get_symname() : "(no name)")
+			//	<< " has address 0x" 
+			//	<< std::hex << sym_value << std::dec
+			//	<< endl;
 			
 			sorted_symbols.insert(make_pair(sym_value, i_sym/*.base()*/));
 		}
@@ -327,19 +327,21 @@ void process_image::update_intervals()
 			optional<addr_t> opt_next_sym_value;
 			if (opt_next_sym) { opt_next_sym_value = (*opt_next_sym)->st_value; }
 			
-			auto to_insert = make_pair(
-				interval<addr_t>::right_open(
-					sym_value, 
-					opt_next_sym_value ? *opt_next_sym_value : sym_value
-				), 
-				interval_descriptor(i_sym_pair->second)
-			);
+// 			auto to_insert = make_pair(
+// 				interval<addr_t>::right_open(
+// 					sym_value, 
+// 					opt_next_sym_value ? *opt_next_sym_value : sym_value
+// 				), 
+// 				interval_descriptor(i_sym_pair->second)
+// 			);
 			// cerr << "Inserting interval " << to_insert.first << endl;
-			intervals.insert(to_insert);
+			//intervals.insert(to_insert);
+			// HACK: while intervals is causing bother
+			addr_to_sym_map.insert(make_pair(sym_value, i_sym_pair->second.get_strptr()));
 		}
 		
 	}
-	cerr << "Rebuilt interval tree of " << intervals.size() << " symbols." << endl;
+	//cerr << "Rebuilt interval tree of " << intervals.size() << " symbols." << endl;
 }
 
 process_image::addr_t process_image::get_dieset_base(dwarf::lib::abstract_dieset& ds)
