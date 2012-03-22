@@ -121,53 +121,43 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 	cerr << "Object size is " << object_size << " bytes." << endl;
 	if (usable_size < 1UL<<29) // sizes >= 512MB are not sane
 	{
+		/* We want the symbol name for the allocation site. 
+		 * If we have dladdr and are statically linked, use that. 
+		 * Otherwise use nearest_preceding_symbol. */
+		optional<string> allocsite_symname;
+		addr_t allocsite_real_addr = 0UL;
 #if HAVE_DLADDR
-		/* 2. Guess what DWARF types were allocated at that allocation site. */
-		shared_ptr<type_die> alloc_t;
-		#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
-		for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
+		if (!is_statically_linked)
+#else 
+		if (false)
+#endif
 		{
-			addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
-			Dl_info dli;
-			/* clear dlerror() */
-			dlerror();
-			int err = dladdr(reinterpret_cast<void*>(addr_to_test), &dli);
-			if (err != 0) /* note unusual error reporting convention */
+		/* 2. Guess what DWARF types were allocated at that allocation site. */
+			shared_ptr<type_die> alloc_t;
+			#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
+			for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
 			{
-				auto found = allocsite_typenames.find(
-					make_pair(dli.dli_sname, object_size));
-				if (found != allocsite_typenames.end())
+				addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
+				Dl_info dli;
+				/* clear dlerror() */
+				dlerror();
+				int err = dladdr(reinterpret_cast<void*>(addr_to_test), &dli);
+				if (err != 0) /* note unusual error reporting convention */
 				{
-					auto &vec = found->second;
-
-					// which function allocated the object?
-					auto subp = discover_object_descr((addr_t) addr_to_test);
-					assert(subp && subp->get_tag() == DW_TAG_subprogram);
-					auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
-					assert(t);
-					alloc_t = dynamic_pointer_cast<type_die>(t);
-					if (alloc_t) 
-					{
-
-						// FIXME: now install this into the record
-						// ret->alloc_site_flag = 1;
-						// ret->alloc_site = reinterpret_cast<intptr_t>(&vec->second);
-						// FIXME: now use the flag when doing lookup
-
-						// return
-						return alloc_t;
-					}
-				}
-				else
-				{
-					cerr << "Failed to recognise allocsite 0x" << std::hex << addr_to_test << std::dec
-						<< " (symbol: " << dli.dli_sname << ", object: " << dli.dli_fname 
-							<< ", object size: " << object_size << ")" << endl;
+					allocsite_symname = string(dli.dli_sname);
+					allocsite_real_addr = addr_to_test;
+					break;
 				}
 			}
-			else
+		}
+		
+		if (!allocsite_symname)
+		{
+		/* Try nearest_preceding_symbol. */
+			string symname;
+			for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
 			{
-				string symname;
+				addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
 				bool success = this->nearest_preceding_symbol(addr_to_test,
 					&symname,
 					0,
@@ -176,7 +166,9 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				);
 				if (success)
 				{
-					assert(false); // FIXME: refactor the above
+					allocsite_symname = symname;
+					allocsite_real_addr = addr_to_test;
+					break;
 				}
 				else
 				{
@@ -189,7 +181,50 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				}
 			}
 		}
-	#endif
+
+		if (allocsite_symname)
+		{
+			/* We succeeded, by one method or another */
+			auto found = allocsite_typenames.find(
+				make_pair(*allocsite_symname, object_size));
+			if (found != allocsite_typenames.end())
+			{
+				auto &vec = found->second;
+
+				// which function allocated the object?
+				auto subp = discover_object_descr(allocsite_real_addr);
+				assert(subp && subp->get_tag() == DW_TAG_subprogram);
+				auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
+				assert(t);
+				auto alloc_t = dynamic_pointer_cast<type_die>(t);
+				if (alloc_t) 
+				{
+
+					// FIXME: now install this into the record
+					// ret->alloc_site_flag = 1;
+					// ret->alloc_site = reinterpret_cast<intptr_t>(&vec->second);
+					// FIXME: now use the flag when doing lookup
+
+					// return
+					return alloc_t;
+				}
+			}
+			else
+			{
+				cerr << "Failed to recognise allocsite 0x" 
+					<< std::hex << allocsite_real_addr << std::dec
+					<< " (symbol: " << *allocsite_symname 
+						<< ", object size: " << object_size << ")" << endl;
+			}
+		}
+		else
+		{
+			cerr << "Failed to find symbol for allocsite bits 0x" 
+				<< std::hex << ret->alloc_site << std::dec
+				<< endl;
+		}
+
+
 
 		/* 2. Guess what DWARF types were allocated at that allocation site. */
 		cerr << "Heap object discovery not supported for " << (void*)heap_loc << endl;

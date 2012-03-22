@@ -53,12 +53,14 @@ process_image::process_image(pid_t pid /* = -1 */)
 #ifndef NO_LIBUNWIND 
 	: 	m_pid(pid == -1 ? getpid() : pid),
 		is_local(pid == getpid()), /* so can pass either -1 or our own pid */
+		is_statically_linked(false),
 		unw_as(is_local ? 
 		unw_local_addr_space : 
 		unw_create_addr_space(&_UPT_accessors/*&unw_accessors*/, 0)),
 #else /* special versions */
 	:	m_pid((assert(pid == -1), getpid())),
 		is_local(true),
+		is_statically_linked(false),
 		unw_as(unw_local_addr_space),
 #endif
 		executable_elf(((Elf*)0))/*,

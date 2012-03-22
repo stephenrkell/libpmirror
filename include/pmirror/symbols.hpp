@@ -81,7 +81,8 @@ namespace pmirror
 		symbols_iterator() // no state
 		 : super((symbols_iterator_base){ 0 }), origin() 
 		{
-			cerr << "Warning: null symbol iterator constructed" << endl;
+			//cerr << "Warning: null symbol iterator constructed" << endl;
+			//assert(false);
 		}
 		
 		//GElf_Sym& dereference() const
