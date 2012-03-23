@@ -96,7 +96,7 @@ process_image::nearest_preceding_symbol(addr_t addr,
 	string *out_object_fname
 )
 {
-	auto found = intervals.find(interval<addr_t>::right_open(addr, addr));
+	auto found = intervals.find(/*interval<addr_t>::right_open(addr, addr)*/ addr);
 	/* FIXME: if we succeeded, we also want to return the object filename
 	 * and its base address, like dladdr() does. */
 	/* FIXME: want to get not just any old interval, but *all* intervals

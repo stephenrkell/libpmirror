@@ -35,6 +35,12 @@ process_image::discover_object_descr(addr_t addr,
 	boost::shared_ptr<spec::type_die> imprecise_static_type /* = null ptr */,
 	addr_t *out_object_start_addr /* = 0 */)
 {
+	cerr << "discover_object_descr: End of data segment is 0x" 
+		<< std::hex << ::end << std::dec << endl;
+	cerr << "discover_object_descr: End of initialised data segment is 0x" 
+		<< std::hex << ::edata << std::dec << endl;
+	cerr << "discover_object_descr: Program break is " << sbrk(0) << endl;
+
 	switch(discover_object_memory_kind(addr))
 	{
 		case ANON:
@@ -112,7 +118,13 @@ std::ostream& operator<<(std::ostream& s, const process_image::memory_kind& k)
 
 process_image::memory_kind process_image::discover_object_memory_kind_from_maps(addr_t addr) const
 {
-	/* HACK: */ const_cast<process_image *>(this)->update();
+	/* HACK: ensure we're up-to-date */ 
+	const_cast<process_image *>(this)->update();
+	cerr << "discover_object_memory_kind_from_maps: End of data segment is 0x" 
+		<< std::hex << ::end << std::dec << endl;
+	cerr << "discover_object_memory_kind_from_maps: End of initialised data segment is 0x" 
+		<< std::hex << ::edata << std::dec << endl;
+	cerr << "discover_object_memory_kind_from_maps: Program break is " << sbrk(0) << endl;
 	
 	memory_kind ret = UNKNOWN;
 	// for each range in the map...
@@ -168,6 +180,9 @@ process_image::memory_kind process_image::discover_object_memory_kind_from_maps(
             }
         }
     }
+	
+	cerr << "Identified 0x" << std::hex << addr << std::dec 
+		<< " as " << name_for_memory_kind(ret) << endl;
 	return ret;
 }
 

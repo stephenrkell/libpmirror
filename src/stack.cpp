@@ -90,8 +90,6 @@ int unw_getcontext(unw_context_t *ucp)
 	return 0;
 }
 
-extern unsigned long end; 
-
 int unw_step(unw_cursor_t *cp)
 {
 	/*

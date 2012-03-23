@@ -55,6 +55,12 @@ using dwarf::spec::variable_die;
 using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
+intptr_t startup_brk;
+static void save_startup_brk(void) __attribute__((constructor));
+static void save_startup_brk(void)
+{
+	startup_brk = (intptr_t) sbrk(0);
+}
 
 void process_image::update()
 {
@@ -129,7 +135,7 @@ bool process_image::rebuild_map()
 		#define NUM_FIELDS 11
         entry_key k;
         entry e;
-		//cerr << "Line is: " << i->c_str() << endl;
+		cerr << "Line is: " << i->c_str() << endl;
         int fields_read = sscanf(i->c_str(), 
         	"%lx-%lx %c%c%c%c %8x %2x:%2x %d %s\n",
     	    &k.first, &k.second, &e.r, &e.w, &e.x, &e.p, &e.offset, &e.maj, &e.min, &e.inode, 
@@ -222,6 +228,7 @@ void process_image::update_i_executable()
 			{
 				/* Found the executable */
 				i_executable = i;
+				
 				return;
 			}
 		}
@@ -245,7 +252,23 @@ void process_image::update_executable_elf()
 		assert(0);
 	}
 	this->executable_elf = elf_begin(fd, ELF_C_READ, NULL);
-		
+	/* Record whether it's a dynamically linked executable. */
+	bool is_dynamic = false;
+	GElf_Ehdr ehdr;
+	GElf_Ehdr *gelf_getehdr_ret = gelf_getehdr(executable_elf, &ehdr); 
+	if (gelf_getehdr_ret != NULL) 
+	{
+		for (unsigned i_ph = 0; i_ph < ehdr.e_phnum; ++i_ph)
+		{
+			GElf_Phdr phdr;
+			GElf_Phdr *gelf_getphdr_ret = gelf_getphdr(executable_elf, i_ph, &phdr);
+			if (gelf_getphdr_ret != NULL) is_dynamic |= 
+				(phdr.p_type == PT_DYNAMIC || phdr.p_type == PT_INTERP);
+			if (is_dynamic) break;
+		}
+	}
+	
+	is_statically_linked = !is_dynamic;
 }
 
 void process_image::update_intervals()
@@ -260,10 +283,13 @@ void process_image::update_intervals()
 	intervals.clear();
 	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
 	{
-		pair<
+		/*pair<
 			concatenating_iterator<symbols_iterator>,
 			concatenating_iterator<symbols_iterator>
-		> syms = all_symbols(i_file);
+		>*/ auto syms = //all_symbols(i_file);
+			symbols(i_file, SHT_SYMTAB);
+		
+		map<addr_t, symbols_iterator> sorted_symbols;
 		
 		for (auto i_sym = syms.first; i_sym != syms.second; ++i_sym)
 		{
@@ -275,25 +301,45 @@ void process_image::update_intervals()
 					&& (GELF_ST_TYPE(i_sym->st_info)!= STT_OBJECT)
 					&& (GELF_ST_TYPE(i_sym->st_info)!= STT_COMMON) // FIXME: support TLS
 				)) continue;
-
-			
-			optional<decltype(i_sym)> opt_next_sym;
-			if (i_sym != syms.second) 
-			{ opt_next_sym = i_sym; ++(*opt_next_sym); }
-		
+				
 			addr_t sym_value = i_sym->st_value;
+			
+// 			cerr << "Calculated that symbol " 
+// 				<< (i_sym./*base().*/get_symname() ? *i_sym./*base().*/get_symname() : "(no name)")
+// 				<< " has address 0x" 
+// 				<< std::hex << sym_value << std::dec
+// 				<< endl;
+			
+			sorted_symbols.insert(make_pair(sym_value, i_sym/*.base()*/));
+		}
+		
+		for (auto i_sym_pair = sorted_symbols.begin(); i_sym_pair != sorted_symbols.end();
+			++i_sym_pair)
+		{
+			optional<decltype(i_sym_pair->second)> opt_next_sym;
+			if (i_sym_pair != sorted_symbols.end())
+			{
+				auto next_sym = i_sym_pair; ++next_sym;
+				opt_next_sym = next_sym->second;
+			}
+			
+			addr_t sym_value = i_sym_pair->first;
 			optional<addr_t> opt_next_sym_value;
 			if (opt_next_sym) { opt_next_sym_value = (*opt_next_sym)->st_value; }
 			
-			intervals.insert(make_pair(
+			auto to_insert = make_pair(
 				interval<addr_t>::right_open(
 					sym_value, 
 					opt_next_sym_value ? *opt_next_sym_value : sym_value
 				), 
-				interval_descriptor(i_sym.base())
-			));
+				interval_descriptor(i_sym_pair->second)
+			);
+			// cerr << "Inserting interval " << to_insert.first << endl;
+			intervals.insert(to_insert);
 		}
+		
 	}
+	cerr << "Rebuilt interval tree of " << intervals.size() << " symbols." << endl;
 
 }
 

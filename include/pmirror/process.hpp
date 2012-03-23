@@ -80,6 +80,9 @@ shared_ptr<basic_die> resolve_first(
 	vector<shared_ptr<with_named_children_die> > starting_points,
 	bool(*pred)(basic_die&) = 0);
 
+/* We record the program break at startup, for memory kind detection. */
+extern intptr_t startup_brk;
+
 struct process_image
 {
 	typedef unw_word_t addr_t;
@@ -149,6 +152,7 @@ private:
 	vector<string> seen_map_lines;
 	files_iterator i_executable; // points to the files entry representing the executable
 	Elf *executable_elf; // an ELF handle on the executable
+	bool is_statically_linked; // whether the executable is static-linked
 	
 	// FIXME: bring this heap metadata up-to-date with the memtable-based implementation
 	/* static const char *alloc_list_symname; */
@@ -298,7 +302,12 @@ public:
 			memory_kind retval = get_object_memory_kind((void*) addr);
 			if (retval != UNKNOWN) return retval;
 			// we have one trick left: use sbrk, which can rule out static
-			if (addr < (unsigned long) sbrk(0)) return HEAP;
+			// BUT only if we have a reliable end, without which we won't
+			// have detected STATIC cases in get_object_memory_kind
+			if (end != 0 && addr < (unsigned long) sbrk(0)) return HEAP;
+			// to handle the "end == 0" case, we also grab the sbrk(0) at startup
+			if (addr < startup_brk) return STATIC;
+			if (end == 0 && addr >= startup_brk && addr < (unsigned long) sbrk(0)) return HEAP;
 			// otherwise, fall through
 			cerr << "Warning: falling back on maps to identify " 
 				<< std::hex << addr << std::dec
@@ -426,7 +435,7 @@ public:
 		addr_t *out_sym_start,
 		size_t *out_sym_size,
 		string *out_object_fname
-	); // FIXME: implement this
+	);
 	
 	// NOTE: this makes a great example of lightweight data abstraction!
 	// We want symbols_iterator to inherit the concepts of esym,
