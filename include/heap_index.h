@@ -6,8 +6,13 @@
 struct entry
 {
 	unsigned present:1;
-	unsigned distance:7;
+	unsigned removed:1;  /* whether this link is in the "removed" state in Harris's algorithm */
+	unsigned distance:6; /* distance from the base of this entry's region, in 8-byte units */
 } __attribute__((packed));
+
+#define DISTANCE_UNIT_SHIFT 3
+/* NOTE: make sure that "distance" is wide enough to store offsets up to
+ * entry_size_in_bytes bytes long! */
 
 extern struct entry *index_region __attribute__((weak));
 
