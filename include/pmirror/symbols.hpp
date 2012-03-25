@@ -49,6 +49,8 @@ namespace pmirror
 		unsigned pos; 
 		bool operator==(const symbols_iterator_base& arg) const 
 		{ return this->pos == arg.pos; }
+		symbols_iterator_base() : pos(0U) {}
+		symbols_iterator_base(unsigned pos) : pos(pos) {}
 	};
 	
 	struct symbols_iterator
@@ -79,7 +81,7 @@ namespace pmirror
 		 : super(p), origin(origin) {}
 
 		symbols_iterator() // no state
-		 : super((symbols_iterator_base){ 0 }), origin() 
+		 : super(0), origin() 
 		{
 			//cerr << "Warning: null symbol iterator constructed" << endl;
 			//assert(false);
@@ -89,6 +91,8 @@ namespace pmirror
 		GElf_Sym dereference() const
 		{
 			GElf_Sym sym;
+			assert(origin->firstsym);
+			assert(origin->lastsym);
 			gelf_getsym(origin->data, base().pos, &sym);
 			return sym;
 		}
@@ -119,6 +123,8 @@ namespace pmirror
 		optional<string>
 		get_symname() const
 		{
+			assert(origin->firstsym);
+			assert(origin->lastsym);
 			assert(base().pos < origin->symcount);
 			auto strptr = elf_strptr(origin->elf,
 				origin->shdr.sh_link, 

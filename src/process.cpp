@@ -52,7 +52,7 @@ using dwarf::spec::compile_unit_die;
 process_image::process_image(pid_t pid /* = -1 */)
 #ifndef NO_LIBUNWIND 
 	: 	m_pid(pid == -1 ? getpid() : pid),
-		is_local(pid == getpid()), /* so can pass either -1 or our own pid */
+		is_local(m_pid == getpid()), /* so can pass either -1 or our own pid */
 		is_statically_linked(false),
 		unw_as(is_local ? 
 		unw_local_addr_space : 

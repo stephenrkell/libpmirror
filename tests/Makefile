@@ -2,10 +2,11 @@ CXXFLAGS += -I../include
 CXXFLAGS += -std=gnu++0x -g3 
 
 CFLAGS += -I/usr/pkg/include
+CFLAGS += -std=c99
 
 LDFLAGS += -L../src -Wl,-R$(realpath ../src) 
 
-LDLIBS  += -lprocessimage
+LDLIBS  += -lpmirror
 LDLIBS  += -ldwarfpp
 LDLIBS  += -lc++fileno 
 LDLIBS  += -lsrk31c++

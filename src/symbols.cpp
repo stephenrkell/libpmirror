@@ -33,28 +33,22 @@ symbols_iteration_state::symbols_iteration_state
      = reinterpret_cast<process_image::files_iterator *>(p_file_iterator_void);
 	(*p_file_iterator)->second.p_df->get_elf(&elf);*/
 
-	if (!e)
-	{
-		firstsym = lastsym = 0;
-		elf = 0;
-		return;
-	}
+	scn = 0;
+	if (!e) { elf = 0; goto no_symbols; }
 	else elf = e;
 
-	// code gratefully stolen from Sun libelf docs
+	// If we get this far, then we have an ELF file, but not necessarily anything else.
 	scn = 0;
-	int number = 0;
 	while ((scn = elf_nextscn(elf, scn)) != 0) 
 	{
 		char *name = 0;
-		if (gelf_getshdr (scn, &shdr) != 0) 
+		if (gelf_getshdr(scn, &shdr) != 0) 
 		{
 			if (shdr.sh_type == sh_type) 
 			{
 				char *name;
 				char *stringName;
 				data = 0;
-				int number = 0;
 				if ((data = elf_getdata(scn, data)) == 0 || data->d_size == 0)
 				{
 					throw dwarf::lib::No_entry(); // FIXME: better choice of exception
@@ -70,6 +64,11 @@ symbols_iteration_state::symbols_iteration_state
 			}
 		}
 	}
+	
+no_symbols:	
+	scn = 0;
+	data = 0;
+	symcount = 0;
 	firstsym = lastsym = 0;
 }
 	

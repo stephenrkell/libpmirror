@@ -304,11 +304,11 @@ void process_image::update_intervals()
 				
 			addr_t sym_value = i_sym->st_value;
 			
-// 			cerr << "Calculated that symbol " 
-// 				<< (i_sym./*base().*/get_symname() ? *i_sym./*base().*/get_symname() : "(no name)")
-// 				<< " has address 0x" 
-// 				<< std::hex << sym_value << std::dec
-// 				<< endl;
+			cerr << "Calculated that symbol " 
+				<< (i_sym./*base().*/get_symname() ? *i_sym./*base().*/get_symname() : "(no name)")
+				<< " has address 0x" 
+				<< std::hex << sym_value << std::dec
+				<< endl;
 			
 			sorted_symbols.insert(make_pair(sym_value, i_sym/*.base()*/));
 		}
@@ -317,9 +317,9 @@ void process_image::update_intervals()
 			++i_sym_pair)
 		{
 			optional<decltype(i_sym_pair->second)> opt_next_sym;
-			if (i_sym_pair != sorted_symbols.end())
+			auto next_sym = i_sym_pair; ++next_sym;
+			if (next_sym != sorted_symbols.end())
 			{
-				auto next_sym = i_sym_pair; ++next_sym;
 				opt_next_sym = next_sym->second;
 			}
 			
@@ -340,7 +340,6 @@ void process_image::update_intervals()
 		
 	}
 	cerr << "Rebuilt interval tree of " << intervals.size() << " symbols." << endl;
-
 }
 
 process_image::addr_t process_image::get_dieset_base(dwarf::lib::abstract_dieset& ds)
