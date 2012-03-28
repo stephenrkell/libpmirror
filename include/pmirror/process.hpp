@@ -233,7 +233,8 @@ public:
 	find_containing_die_for_absolute_addr(
 		unw_word_t addr,
 		const Pred& pred,
-		bool innermost);
+		bool innermost,
+		optional<abstract_dieset::iterator> start_here = optional<abstract_dieset::iterator>());
 
 	/* DIE-predicated lookup of relative addresses. */
 	template <typename Pred>
@@ -242,14 +243,18 @@ public:
 		abstract_dieset& ds,
 		lib::Dwarf_Off dieset_relative_addr, 
 		const Pred& pred,
-		bool innermost);
+		bool innermost,
+		optional<abstract_dieset::iterator> start_here = optional<abstract_dieset::iterator>());
 
 	shared_ptr<subprogram_die> 
 	find_subprogram_for_absolute_ip(unw_word_t ip);
 	
 	shared_ptr<compile_unit_die> 
 	find_compile_unit_for_absolute_ip(unw_word_t ip);
-	
+
+	abstract_dieset::iterator // the same, but find an iterator suitable for start_here arg
+	cu_iterator_for_absolute_ip(unw_word_t ip);
+
 	shared_ptr<with_static_location_die> 
 	find_containing_die_for_absolute_addr(unw_word_t addr, bool innermost);
 	

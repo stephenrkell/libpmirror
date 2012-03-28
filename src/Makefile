@@ -121,4 +121,4 @@ heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 	gcc $(CFLAGS) -c -o "$@" "$<"
 
 clean:
-	rm -f *.o *.so $(DEPS)
+	rm -f *.o *.so *.a $(DEPS)

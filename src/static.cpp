@@ -333,10 +333,12 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 shared_ptr<subprogram_die> 
 process_image::find_subprogram_for_absolute_ip(unw_word_t ip)
 {
+	auto iter = cu_iterator_for_absolute_ip(ip);
 	auto found = find_containing_die_for_absolute_addr(
 			ip,
 			[](const basic_die& d) { return d.get_tag() == DW_TAG_subprogram; }, // pred
-			false // innermost? no, outermost should be fine (BUT nested subprograms?)
+			false, // innermost? no, outermost should be fine (BUT nested subprograms?)
+			iter
 		);
 	auto found_subprogram = dynamic_pointer_cast<subprogram_die>(found);
 	assert(found_subprogram);
@@ -345,14 +347,38 @@ process_image::find_subprogram_for_absolute_ip(unw_word_t ip)
 shared_ptr<compile_unit_die> 
 process_image::find_compile_unit_for_absolute_ip(unw_word_t ip)
 {
-	auto found = find_containing_die_for_absolute_addr(
-			ip,
-			[](const basic_die& d) { return d.get_tag() == DW_TAG_compile_unit; }, // pred
-			false // innermost? no, outermost should be fine
-		);
-	auto found_compile_unit = dynamic_pointer_cast<compile_unit_die>(found);
-	assert(found_compile_unit);
+	auto iter = cu_iterator_for_absolute_ip(ip);
+	assert(*iter);
+	auto found_compile_unit = dynamic_pointer_cast<compile_unit_die>(*iter);
 	return found_compile_unit;
+}
+abstract_dieset::iterator
+process_image::cu_iterator_for_absolute_ip(unw_word_t ip)
+{
+	process_image::files_iterator found_file = find_file_for_addr(ip);
+	assert(found_file != this->files.end());
+	abstract_dieset& ds = *found_file->second.p_ds;
+	auto base_addr = get_dieset_base(ds);
+	assert(ip >= base_addr);
+	
+	auto p_toplevel = dynamic_pointer_cast<lib::file_toplevel_die>(ds.toplevel());
+	
+	auto found = p_toplevel->cu_intervals.find(ip - base_addr);
+	assert(found != p_toplevel->cu_intervals.end());
+	Dwarf_Off found_off = found->second;
+	abstract_dieset::path_type path(1, 0UL);
+	path.push_back(found->second);
+	return abstract_dieset::position_and_path(
+		(abstract_dieset::position){ found_file->second.p_ds.get(), found->second }, 
+		path
+	);
+	
+// 	auto found = find_containing_die_for_absolute_addr(
+// 		ip,
+// 		[](const basic_die& d) { return d.get_tag() == DW_TAG_compile_unit; }, // pred
+// 		false // innermost? no, outermost should be fine
+// 	);
+// 	return found->iterator_here();
 }
 shared_ptr<with_static_location_die> 
 process_image::find_containing_die_for_absolute_addr(unw_word_t addr, bool innermost)
@@ -372,7 +398,8 @@ shared_ptr<with_static_location_die>
 process_image::find_containing_die_for_absolute_addr(
 	unw_word_t addr,
 	const Pred& pred,
-	bool innermost)
+	bool innermost,
+	optional<abstract_dieset::iterator> start_here /* = optional<abstract_dieset::iterator>() */)
 {
 	process_image::files_iterator found_file = find_file_for_addr(addr);
 	assert (found_file != this->files.end());
@@ -383,7 +410,8 @@ process_image::find_containing_die_for_absolute_addr(
 			ds,
 			dieset_relative_addr,
 			pred, // pred
-			innermost // innermost?
+			innermost, // innermost?
+			start_here
 		);
 	auto retval = dynamic_pointer_cast<spec::with_static_location_die>(found);
 	assert(retval || !found); // cast should not fail
@@ -398,9 +426,10 @@ process_image::find_containing_die_for_dieset_relative_addr(
 	abstract_dieset& ds,
 	Dwarf_Off dieset_relative_addr, 
 	const Pred& pred,
-	bool innermost)
+	bool innermost,
+	optional<abstract_dieset::iterator> start_here /* = optional<abstract_dieset::iterator>() */)
 {
-	auto under_here = ds.begin();
+	auto under_here = start_here ? *start_here : ds.begin();
 	abstract_dieset::iterator found_deeper = under_here;
 	abstract_dieset::iterator last_to_satisfy = ds.end();
 	while (found_deeper != ds.end())
