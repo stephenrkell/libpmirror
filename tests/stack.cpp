@@ -16,19 +16,21 @@ static int c(void *arg);
 static int a(foo arg1, int arg2)
 {
 	struct
-    {
-    	int xyzzy;
-        int plugh;
-    } myvar;
-    b(arg2);
+	{
+		int xyzzy;
+		int plugh;
+	} myvar;
+	b(arg2);
 	return 20;
 }
 
 static int b(int arg1)
 {
 	foo it = {1, 2.0};
-    c(&it);
-    c(&arg1);
+	std::cout << "Trying to discover local variable `it' in b." << std::endl;
+	c(&it); // try to discover a local
+	std::cout << "Trying to discover parameter `arg1' in b." << std::endl;
+	c(&arg1); // try to discover a parameter
 }
 
 static int c(void *arg)
@@ -36,7 +38,7 @@ static int c(void *arg)
 	process_image::addr_t out_object_start_addr = 0;
 	process_image::addr_t out_frame_base = 0;
 	process_image::addr_t out_frame_return_addr = 0;
-    	std::cout << "Address of first local variable in c() is " 
+	std::cout << "Address of first local variable in c() is " 
 		<< &out_object_start_addr
 		<< std::endl;
 	std::cout << "Discovering object at " << arg << std::endl;// " to have typeinfo at " << 
@@ -48,6 +50,7 @@ static int c(void *arg)
 		&out_frame_return_addr
 	);
 	assert(discovered);
+	std::cout << "Successfully discovered object at " << arg << std::endl;
 	std::cout << *discovered << std::endl;
 
 	return 0;
@@ -58,5 +61,5 @@ int main(int argc, char **argv)
 {
 	pmirror::self.update();
 	a(global /* copied */, 42);
-    return 0;
+	return 0;
 }

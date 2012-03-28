@@ -191,10 +191,10 @@ private:
 		
 		interval_descriptor(const symbols_iterator& sym)
 		 : kind(ELF_DESCRIPTOR), elf_sym(sym),
-			dwarf_die((abstract_dieset::position){0, 0}) {}
+			dwarf_die() {}
 		interval_descriptor()
 		 : kind(ELF_DESCRIPTOR), elf_sym(),
-			dwarf_die((abstract_dieset::position){0, 0}) {}
+			dwarf_die() {}
 		bool operator==(const interval_descriptor& arg) const
 		{ return kind == arg.kind
 			&& ((kind == ELF_DESCRIPTOR)
@@ -221,9 +221,9 @@ private:
 public:
 	
 	/* Single-step lookup. */
-	abstract_dieset::position_and_path
+	abstract_dieset::iterator
 	find_more_specific_die_for_dieset_relative_addr(
-		abstract_dieset::position_and_path under_here,
+		abstract_dieset::iterator under_here,
 		unw_word_t addr);
 	
 	/* DIE-predicated lookup of absolute addresses. */

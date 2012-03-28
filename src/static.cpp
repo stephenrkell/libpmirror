@@ -28,6 +28,7 @@ using std::make_pair;
 using boost::dynamic_pointer_cast;
 using boost::shared_ptr;
 
+using dwarf::spec::abstract_dieset;
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
 using dwarf::spec::type_die;
@@ -177,15 +178,16 @@ process_image::find_file_for_addr(unw_word_t addr)
 }
 
 
-dwarf::lib::abstract_dieset::position_and_path
+abstract_dieset::iterator
 process_image::find_more_specific_die_for_dieset_relative_addr(
-	dwarf::lib::abstract_dieset::position_and_path under_here,
+	abstract_dieset::iterator under_here,
 	unw_word_t dieset_relative_addr)
 {
-	unsigned initial_depth = under_here.path_from_root.size();
+	assert(under_here.base().p_d->get_offset() == under_here.base().off);
+	unsigned initial_depth = under_here.base().path_from_root.size();
 	auto initial_under_here = under_here;
 	
-	dwarf::spec::abstract_dieset& ds = *under_here.p_ds;
+	abstract_dieset& ds = *under_here.base().p_ds;
 
 	/* Try the cache... */
 	location_refinements_cache_t::iterator found;
@@ -193,7 +195,7 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 		(found = 
 			location_refinements_cache.find(
 				make_pair(
-					under_here,
+					under_here.base(),
 					dieset_relative_addr
 				)
 			)
@@ -207,17 +209,19 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 		else
 		{
 			// hit, and a positive result
-			assert(found->second.off != under_here.off);
-			return found->second;
+			assert(found->second.off != under_here.base().off);
+			abstract_dieset::iterator to_return = found->second;
+			assert(to_return.base().p_d->get_offset() == to_return.base().off);
+			return to_return;
 		}
 	}
 	// else run the slow path
 
 	std::cerr << "*** search for more specific match for dieset relative addr 0x" 
 		<< std::hex << dieset_relative_addr << std::hex
-		<< " than DIE at offset 0x" 
-		<< std::hex << (*initial_under_here.p_ds)[initial_under_here.off]->get_offset() 
-		<< std::dec << std::endl;
+		<< " than "
+		<< (*initial_under_here)->summary()
+		<< std::endl;
 	
 	
 	//dwarf::spec::abstract_dieset::bfs_policy bfs_state;
@@ -230,11 +234,10 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 	 * 2. Instead of straight BFS, we want a modification: don't bother
 	 * descending into subtrees that will not contain any  */
 	 
-	struct location_subtree_policy :  public dwarf::spec::abstract_dieset::bfs_policy
+	struct location_subtree_policy :  public abstract_dieset::bfs_policy
 	{
-		typedef dwarf::spec::abstract_dieset::bfs_policy super;
-		int increment(dwarf::spec::abstract_dieset::position& pos,
-			dwarf::spec::abstract_dieset::path_type& path)
+		typedef abstract_dieset::bfs_policy super;
+		int increment(abstract_dieset::iterator_base& base)
 		{
 			/* If our current DIE is 
 			 * a with_static_location_die
@@ -244,14 +247,13 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 			 * we increment *with* enqueueing children.
 			 * Otherwise we increment without enqueueing children.
 			 */
-			auto p_die = (*pos.p_ds)[pos.off];
-			if (dynamic_pointer_cast<dwarf::spec::with_static_location_die>(p_die))
+			if (dynamic_pointer_cast<dwarf::spec::with_static_location_die>(base.p_d))
 			{
-				return super::increment(pos, path);
+				return super::increment(base);
 			}
 			else
 			{
-				switch (p_die->get_tag())
+				switch (base.p_d->get_tag())
 				{
 					case DW_TAG_namespace:
 					case DW_TAG_module:
@@ -260,67 +262,64 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 					case DW_TAG_partial_unit:
 					case DW_TAG_common_block:
 					case DW_TAG_common_inclusion:
-						return super::increment(pos, path);
+						return super::increment(base);
 						break;
 					default:
-						return super::increment_skipping_subtree(pos, path);
+						return super::increment_skipping_subtree(base);
 						break;
 				}
 			}
 		}
 	} search_state;
 	
-	dwarf::spec::abstract_dieset::iterator depthfirst_i(under_here);
+	abstract_dieset::iterator depthfirst_i(under_here);
 	depthfirst_i++; // now we have the first child, or something higher
-	dwarf::spec::abstract_dieset::iterator i(depthfirst_i, search_state);
-	for (; i != ds.end() && i.base().path_from_root.size() > initial_depth; i++)
+	abstract_dieset::iterator i_d(depthfirst_i, search_state);
+	for (; i_d != ds.end() && i_d.base().path_from_root.size() > initial_depth; ++i_d)
 	{
-		unsigned depth = i.base().path_from_root.size();
+		unsigned depth = i_d.base().path_from_root.size();
 		
 // 		std::cerr << "*** considering " 
 // 			<< (*i)->get_spec().tag_lookup((*i)->get_tag())
 // 			<< " at 0x"
 // 			<< std::hex << (*i)->get_offset() << std::dec << std::endl;
 // 			//<< std::hex << i << std::endl;
-		auto p_has_location = dynamic_pointer_cast<spec::with_static_location_die>(*i);
+		auto p_has_location = dynamic_pointer_cast<spec::with_static_location_die>(*i_d);
 		if (p_has_location && p_has_location->contains_addr(dieset_relative_addr))
 		{
 			std::cerr << "*** found more specific match, "
-				<< (*i)->get_spec().tag_lookup((*i)->get_tag())
-				<< " at 0x"
-				<< std::hex << (*i)->get_offset() << std::dec
+				<< (*i_d)->summary()
 				<< ", for dieset-relative addr 0x" 
 				<< std::hex << dieset_relative_addr << std::hex
-				<< " (than DIE at offset 0x" 
-				<< std::hex << initial_under_here.off << std::dec << ")"
+				<< " (than " << (*initial_under_here)->summary() << ")"
 				/*<< ": " << *p_has_location*/ << std::endl;
 				
 			// add to cache
 			location_refinements_cache.insert(
 				make_pair(
 					make_pair(
-						under_here,
+						under_here.base(),
 						dieset_relative_addr
 					),
-					i.base()
+					i_d.base()
 				)
 			);
 			
 			// return
-			return i.base();
+			return i_d.base();
 		}
 		//else std::cerr << (p_has_location ? "no static location" : "does not contain addr") << std::endl;
 	}
 	std::cerr << "*** no more specific match for dieset-relative addr 0x" 
 		<< std::hex << dieset_relative_addr << std::hex
-		<< " (than DIE at offset 0x" << std::hex << initial_under_here.off << std::dec
+		<< " (than " << (*initial_under_here)->summary() << ")"
 		<< std::endl;
 	
 	// add negative result to cache
 	location_refinements_cache.insert(
 		make_pair(
 			make_pair(
-				under_here,
+				under_here.base(),
 				dieset_relative_addr
 			),
 			ds.end().base()
@@ -334,34 +333,38 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 shared_ptr<subprogram_die> 
 process_image::find_subprogram_for_absolute_ip(unw_word_t ip)
 {
-	return dynamic_pointer_cast<spec::subprogram_die>(
-		find_containing_die_for_absolute_addr(
+	auto found = find_containing_die_for_absolute_addr(
 			ip,
 			[](const basic_die& d) { return d.get_tag() == DW_TAG_subprogram; }, // pred
 			false // innermost? no, outermost should be fine (BUT nested subprograms?)
-		));
+		);
+	auto found_subprogram = dynamic_pointer_cast<subprogram_die>(found);
+	assert(found_subprogram);
+	return found_subprogram;
 }
 shared_ptr<compile_unit_die> 
 process_image::find_compile_unit_for_absolute_ip(unw_word_t ip)
 {
-	return dynamic_pointer_cast<spec::compile_unit_die>(
-		find_containing_die_for_absolute_addr(
+	auto found = find_containing_die_for_absolute_addr(
 			ip,
 			[](const basic_die& d) { return d.get_tag() == DW_TAG_compile_unit; }, // pred
 			false // innermost? no, outermost should be fine
-		));
+		);
+	auto found_compile_unit = dynamic_pointer_cast<compile_unit_die>(found);
+	assert(found_compile_unit);
+	return found_compile_unit;
 }
 shared_ptr<with_static_location_die> 
 process_image::find_containing_die_for_absolute_addr(unw_word_t addr, bool innermost)
 {
-	auto retval = dynamic_pointer_cast<spec::with_static_location_die>(
-		find_containing_die_for_absolute_addr(
+	auto found = find_containing_die_for_absolute_addr(
 			addr,
 			[](const basic_die& d) { return true; }, // pred
 			innermost // innermost?
-		));
-	assert(retval); // cast should not fail
-	return retval;
+		);
+	auto found_with_static_location = dynamic_pointer_cast<with_static_location_die>(found);
+	assert(found); // cast should not fail
+	return found;
 }
 // implementation of the above
 template <typename Pred>
@@ -373,7 +376,7 @@ process_image::find_containing_die_for_absolute_addr(
 {
 	process_image::files_iterator found_file = find_file_for_addr(addr);
 	assert (found_file != this->files.end());
-	dwarf::spec::abstract_dieset& ds = *found_file->second.p_ds;
+	abstract_dieset& ds = *found_file->second.p_ds;
 	unw_word_t dieset_relative_addr = addr - get_dieset_base(ds);
 
 	auto found = find_containing_die_for_dieset_relative_addr(
@@ -392,21 +395,28 @@ process_image::find_containing_die_for_absolute_addr(
 template <typename Pred>
 shared_ptr<with_static_location_die> 
 process_image::find_containing_die_for_dieset_relative_addr(
-	dwarf::spec::abstract_dieset& ds,
+	abstract_dieset& ds,
 	Dwarf_Off dieset_relative_addr, 
 	const Pred& pred,
 	bool innermost)
 {
-	auto under_here = ds.toplevel()->iterator_here();
-	dwarf::spec::abstract_dieset::position_and_path found_deeper = under_here.base();
-	dwarf::spec::abstract_dieset::position_and_path last_to_satisfy = ds.end().base();
-	while (found_deeper != ds.end().base())
+	auto under_here = ds.begin();
+	abstract_dieset::iterator found_deeper = under_here;
+	abstract_dieset::iterator last_to_satisfy = ds.end();
+	while (found_deeper != ds.end())
 	{
-		if (pred(*(*found_deeper.p_ds)[found_deeper.off]))
+		cerr << "Trying predicate at offset 0x" << std::hex << found_deeper.base().off << std::dec
+			<< " a.k.a. " << (*found_deeper)->summary() << endl;
+		if (pred(**found_deeper))
 		{
+			cerr << "Predicate includes " << (*found_deeper)->summary() << endl;
 			last_to_satisfy = found_deeper;
 			if (!innermost) break;
 			// else continue searching
+		}
+		else
+		{
+			cerr << "Predicate rules out " << (*found_deeper)->summary() << endl;
 		}
 		
 		// try to go lower
@@ -414,10 +424,15 @@ process_image::find_containing_die_for_dieset_relative_addr(
 			found_deeper,
 			dieset_relative_addr);
 	}
-	if (last_to_satisfy == ds.end().base()) return shared_ptr<with_static_location_die>();
+	if (last_to_satisfy == ds.end())
+	{
+		cerr << "Warning: no satisfying DIEs covered dieset-relative addr 0x" 
+			<< std::hex << dieset_relative_addr << std::dec << endl;
+		return shared_ptr<with_static_location_die>();
+	}
 	else
 	{
-		auto found = (*last_to_satisfy.p_ds)[last_to_satisfy.off];
+		auto found = *last_to_satisfy;
 		assert(found);
 		auto retval = dynamic_pointer_cast<with_static_location_die>(found);
 		if (!retval)

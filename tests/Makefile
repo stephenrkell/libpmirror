@@ -25,8 +25,9 @@ default: $(ALL_TESTS)
 DEPS := $(patsubst %.cpp,.%.cpp.d,$(SRC))
 
 $(DEPS): .%.cpp.d: %.cpp
-	g++ -MM $(CXXFLAGS) "$<"  > "$@"
+	$(CXX) -MM $(CXXFLAGS) "$<"  > "$@"
 
 include $(DEPS)
 
-
+%: %.cpp 
+	$(CXX) $(CXXFLAGS) -o "$@" "$<" $(LDFLAGS) $(LDLIBS)
