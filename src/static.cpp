@@ -119,9 +119,10 @@ process_image::nearest_preceding_symbol(addr_t addr,
 	cerr << "Addr is 0x" << std::hex << addr << std::dec << endl;
 
 	/* This gives us either a direct hit on addr, or the next symbol *past* addr. */
-	auto result = srk31::greatest_le(
+	auto result = srk31::greatest_le_from_upper_bound(
 		addr_to_sym_map.begin(),
 		addr_to_sym_map.end(),
+		addr_to_sym_map.upper_bound(addr),
 		make_pair(addr, (const char *) 0),
 		addr_to_sym_map.value_comp()
 	);
@@ -173,8 +174,44 @@ process_image::find_file_for_addr(unw_word_t addr)
         std::cerr << "Warning: object at " << (void*) i_entry->first.first
          << " (description: '" << i_entry->second.seg_descr << "') "
          << " has no entry in files map" << std::endl;
-        return files.end();
+		// HMM: on NetBSD it happens for BSS segments of the executable
+		return i_executable;
+        //return files.end();
     }
+}
+
+abstract_dieset::iterator
+process_image::cu_iterator_for_dieset_relative_addr(
+	files_iterator i_file,
+	addr_t dieset_relative_addr)
+{
+	/* Use aranges */
+	auto& aranges = i_file->second.p_df->get_aranges();
+	cerr << "aranges has " << aranges.count() << " entries." << endl;
+	lib::Dwarf_Addr start;
+	lib::Dwarf_Unsigned len;
+	lib::Dwarf_Off cu_off;
+	int ret = aranges.get_info_for_addr(
+		dieset_relative_addr, &start, &len, &cu_off
+	);
+	if (ret == DW_DLV_OK)
+	{
+		cerr << "Found arange, start 0x" << std::hex << start << std::dec
+			<< ", length " << len << ", in compile unit at 0x" 
+			<< std::hex << cu_off << std::dec << endl;
+			
+		abstract_dieset::path_type path;
+		path.push_back(0UL);
+		path.push_back(cu_off);
+		return abstract_dieset::position_and_path(
+			(abstract_dieset::position){ i_file->second.p_ds.get(), path.back() },
+			path);
+	}
+	else
+	{
+		cerr << "Did not find arange." << endl;
+		return i_file->second.p_ds->end();
+	}
 }
 
 
@@ -183,6 +220,9 @@ process_image::find_more_specific_die_for_dieset_relative_addr(
 	abstract_dieset::iterator under_here,
 	unw_word_t dieset_relative_addr)
 {
+	// This is too expensive to do from toplevel! 
+	assert(under_here.base().off != 0UL);
+	
 	assert(under_here.base().p_d->get_offset() == under_here.base().off);
 	unsigned initial_depth = under_here.base().path_from_root.size();
 	auto initial_under_here = under_here;
@@ -405,6 +445,13 @@ process_image::find_containing_die_for_absolute_addr(
 	assert (found_file != this->files.end());
 	abstract_dieset& ds = *found_file->second.p_ds;
 	unw_word_t dieset_relative_addr = addr - get_dieset_base(ds);
+
+	if (!start_here || start_here->base().off == 0UL)
+	{
+		start_here = cu_iterator_for_dieset_relative_addr(
+			found_file, 
+			dieset_relative_addr);
+	}
 
 	auto found = find_containing_die_for_dieset_relative_addr(
 			ds,

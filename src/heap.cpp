@@ -87,13 +87,22 @@ process_image::discover_heap_object(addr_t heap_loc,
  * incremented size is what's padded. 
  *  */
 
+/* Do I want to pad to 4, 8 or (=== 4 (mod 8)) bytes? 
+ * Try 4 mod 8. */
 #define PAD_TO_NBYTES(s, n) (((s) % (n) == 0) ? (s) : ((((s) / (n)) + 1) * (n)))
-#define USABLE_SIZE_FROM_OBJECT_SIZE(s) (PAD_TO_NBYTES((s) + sizeof (struct trailer) , 4))
+#define PAD_TO_MBYTES_MOD_N(s, n, m) (((s) % (n) <= (m)) \
+? ((((s) / (n)) * (n)) + (m)) \
+: (((((s) / (n)) + 1) * (n)) + (m)))
+// (((s) % (n) <= (m)) ? ((((s) / (n)) * (n)) + (m)) : (((((s) / (n)) + 1) * (n)) + (m)))
+#define USABLE_SIZE_FROM_OBJECT_SIZE(s) (PAD_TO_MBYTES_MOD_N( ((s) + sizeof (struct trailer)) , 8, 4))
 #define HEAPSZ_ONE(t) (USABLE_SIZE_FROM_OBJECT_SIZE(sizeof ((t))))
 
 static map<pair<string, size_t>, vector<string> > allocsite_typenames = {
-	{ { "_puffs_init", 1102 /* HEAPSZ_ONE(puffs_usermount)*/ }, (vector<string>){ "puffs_usermount" } },
-	{ { "_puffs_init", 3382 /* HEAPSZ_ONE(puffs_kargs)*/ }, (vector<string>){ "puffs_kargs" } },
+	{ { "_puffs_init", /*1102*/ USABLE_SIZE_FROM_OBJECT_SIZE(1100) }, (vector<string>){ "puffs_usermount" } },
+	{ { "_puffs_init", /*3382*/ USABLE_SIZE_FROM_OBJECT_SIZE(3380) }, (vector<string>){ "puffs_kargs" } },
+	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(528) }, (vector<string>){ "dirent" } }, 
+	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(2320) }, (vector<string>){ "mount" } }, 
+	{ { "kmem_alloc", USABLE_SIZE_FROM_OBJECT_SIZE(2836) }, (vector<string>){ "tmpfs_mount" } }, 
 	{ { "makefooblahfunc", 42 }, (vector<string>){ "foo", "blah" } }
 };
 
@@ -115,10 +124,10 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 	}
 	void *alloc_site = (void *) ret->alloc_site;
 	size_t usable_size = malloc_usable_size(reinterpret_cast<void*>(heap_loc));
-	size_t object_size = usable_size - sizeof (struct trailer);
+	size_t padded_object_size = usable_size - sizeof (struct trailer);
 	cerr << "Considering object at " << (void*)heap_loc << endl;
 	cerr << "Usable size is " << usable_size << " bytes." << endl;
-	cerr << "Object size is " << object_size << " bytes." << endl;
+	cerr << "Padded object size is " << padded_object_size << " bytes." << endl;
 	if (usable_size < 1UL<<29) // sizes >= 512MB are not sane
 	{
 		/* We want the symbol name for the allocation site. 
@@ -182,13 +191,13 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 		{
 			/* We succeeded, by one method or another */
 			auto found = allocsite_typenames.find(
-				make_pair(*allocsite_symname, object_size));
+				make_pair(*allocsite_symname, usable_size));
 			if (found != allocsite_typenames.end())
 			{
 				auto &vec = found->second;
 
 				// which function allocated the object?
-				auto subp = discover_object_descr(allocsite_real_addr);
+				auto subp = find_subprogram_for_absolute_ip(allocsite_real_addr);
 				assert(subp && subp->get_tag() == DW_TAG_subprogram);
 				auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
 				assert(t);
@@ -202,6 +211,7 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 					// FIXME: now use the flag when doing lookup
 
 					// return
+					cerr << "Recognised allocsite; returning type " << alloc_t->summary() << endl;
 					return alloc_t;
 				}
 			}
@@ -210,7 +220,7 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				cerr << "Failed to recognise allocsite 0x" 
 					<< std::hex << allocsite_real_addr << std::dec
 					<< " (symbol: " << *allocsite_symname 
-						<< ", object size: " << object_size << ")" << endl;
+						<< ", padded_object size: " << padded_object_size << ")" << endl;
 			}
 		}
 		else
