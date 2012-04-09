@@ -2,6 +2,7 @@
 #define LIBCAKE_PROCESS_HPP
 
 #include <string>
+#include <memory>
 #include <map>
 #include <set>
 #include <functional>
@@ -62,6 +63,7 @@ using dwarf::spec::subprogram_die;
 using dwarf::spec::compile_unit_die;
 using dwarf::lib::abstract_dieset;
 using std::vector;
+using std::set;
 using std::string;
 using std::pair;
 using std::make_pair;
@@ -102,6 +104,16 @@ struct process_image
 	};
 	map<entry_key, entry> objects;
 	typedef map<entry_key, entry>::iterator objects_iterator;
+	
+	/* Since DWARF aranges doesn't cover static variables, we do an eager scan
+	 * for static variables on opening each DWARF file. */
+	struct root_die_with_static_index : public core::root_die
+	{
+		spec::abstract_dieset *p_ds;
+		set<lib::Dwarf_Off> static_vars;
+		map<lib::Dwarf_Addr, pair<lib::Dwarf_Off, size_t> > addr_lookup;
+		root_die_with_static_index(int fd, spec::abstract_dieset *p_corresponding_ds); 
+	};	
 
 	/* We also maintain a map of canonicalised filenames
 	 * to the handles we have open on them: 
@@ -111,6 +123,8 @@ struct process_image
 		shared_ptr<std::ifstream> p_if;
 		shared_ptr<lib::file> p_df;
 		shared_ptr<abstract_dieset> p_ds;
+		shared_ptr<std::ifstream> p_core_if;
+		root_die_with_static_index *p_root;
 		/* std::multimap<lib::Dwarf_Off, lib::Dwarf_Off> ds_type_containment; */
 	};
 	map<string, file_entry> files;

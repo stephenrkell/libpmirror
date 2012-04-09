@@ -1,10 +1,6 @@
-CXXFLAGS += -I../include
-CXXFLAGS += -std=gnu++0x -g3 
+include ../Makerules.common
 
-CFLAGS += -I/usr/pkg/include
-CFLAGS += -std=c99
-
-LDFLAGS += -L../src -Wl,-R$(realpath ../src) 
+CXXFLAGS += -g
 
 LDLIBS  += -lpmirror
 LDLIBS  += -ldwarfpp
@@ -12,7 +8,8 @@ LDLIBS  += -lc++fileno
 LDLIBS  += -lsrk31c++
 LDLIBS  += -ldwarf 
 LDLIBS  += -lelf -lsupc++ -lboost_regex
-LDLIBS  += -lunwind -lunwind-ptrace -lunwind-$(shell arch)
+LDLIBS  += -lboost_serialization
+LDLIBS  += -lunwind -lunwind-ptrace -lunwind-$(UNWIND_ARCH)
 LDLIBS  += -ldl
 LDLIBS  += -lrtti
 LDLIBS  += -lreflect

@@ -185,6 +185,26 @@ process_image::cu_iterator_for_dieset_relative_addr(
 	files_iterator i_file,
 	addr_t dieset_relative_addr)
 {
+	/* Since we're _addr not _ip, try the variable cache first. */
+	auto& lookup = i_file->second.p_root->addr_lookup;
+	auto upper_bound = lookup.upper_bound(dieset_relative_addr);
+	auto found = srk31::greatest_le_from_upper_bound(lookup.begin(), lookup.end(), upper_bound,
+		dieset_relative_addr);
+	if (found != lookup.end())
+	{
+		cerr << "Found static var, start 0x" << std::hex << found->first << std::dec
+			<< ", length " << found->second.second << ", in compile unit at 0x" 
+			<< std::hex << found->second.first << std::dec << endl;
+		assert(false);
+	
+	}
+	else if (found == lookup.end())
+	{
+		cerr << "Did not find static var." << endl;
+		return i_file->second.p_ds->end();
+	}
+
+#if 0
 	/* Use aranges */
 	auto& aranges = i_file->second.p_df->get_aranges();
 	cerr << "aranges has " << aranges.count() << " entries." << endl;
@@ -212,6 +232,7 @@ process_image::cu_iterator_for_dieset_relative_addr(
 		cerr << "Did not find arange." << endl;
 		return i_file->second.p_ds->end();
 	}
+#endif
 }
 
 

@@ -1,3 +1,5 @@
+include Makerules.common
+
 CXXFLAGS += -std=gnu++0x -g
 
 default: lib

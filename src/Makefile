@@ -1,14 +1,4 @@
-COMMON_CFLAGS += -I../include
-COMMON_CFLAGS += -I$(MALLOC_HOOKS)
-COMMON_CFLAGS += -std=gnu99 -fpic -g # need gnu99 for Linux-specific mmap() flags
-CFLAGS += $(COMMON_CFLAGS) -O0 
-
-CXXFLAGS += -I../include/pmirror
-CXXFLAGS += -I../include
-#CXXFLAGS += -std=c++0x -g
-CXXFLAGS += -fPIC -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
-
-LDFLAGS += -L. -Wl,-R$(realpath .) -L../lib -Wl,-R$(realpath ../lib)
+include ../Makerules.common
 
 default: \
 libpmirror.so \
@@ -52,7 +42,7 @@ $(C_DEPS): .%.d : %.c
 ifeq ($(NO_LIBUNWIND),yes)
 UNWIND_LDLIBS := 
 else
-UNWIND_LDLIBS += -lunwind-$$(uname -m) -lunwind-ptrace -lunwind 
+UNWIND_LDLIBS += -lunwind-$(UNWIND_ARCH) -lunwind-ptrace -lunwind 
 endif
 
 ifeq ($(LIBC_INCLUDES_LIBDL),yes)

@@ -187,6 +187,30 @@ bool process_image::rebuild_map()
 							files[seg_descr].p_if->close();
 						}
 					}
+					// we open another fd on the same file, for the root_die
+					files[seg_descr].p_core_if = make_shared<std::ifstream>(seg_descr);
+					if (*files[seg_descr].p_core_if)
+					{
+						int fd = fileno(*files[seg_descr].p_core_if);
+						if (fd != -1)
+						{
+							try
+							{
+								files[seg_descr].p_root
+								 = new root_die_with_static_index(
+										fd, files[seg_descr].p_ds.get()
+									);
+							}
+							catch (dwarf::lib::No_entry)
+							{
+								files[seg_descr].p_root = nullptr;
+							}
+						}
+						else
+						{
+							files[seg_descr].p_core_if->close();
+						}
+					}
 				}
 			}
 			// now we can assign the new entry to the map
@@ -195,6 +219,103 @@ bool process_image::rebuild_map()
 	}
 	objects = new_objects;
 	return true;
+}
+
+process_image::root_die_with_static_index::root_die_with_static_index(
+	int fd,
+	spec::abstract_dieset *p_corresponding_ds
+)
+ : p_ds(p_corresponding_ds), core::root_die(fd) 
+{
+	using dwarf::lib::Dwarf_Off;
+	using dwarf::lib::Dwarf_Addr;
+	using dwarf::lib::Dwarf_Unsigned;
+	
+	cerr << "Searching for variables..." << endl;
+	for (auto i = this->begin(); i != this->end(); ++i)
+	{
+		Dwarf_Off off = i.offset_here();
+		if (i.tag_here() == DW_TAG_variable
+			&& i.has_attribute_here(DW_AT_location))
+		{
+			/* DWARF doesn't tell us whether a variable is static or not. 
+			 * We want to rule out non-static variables. To do this, we
+			 * rely on our existing lib:: infrastructure. */
+			core::Attribute a(i, DW_AT_location);
+			encap::attribute_value val(a, this->get_dbg());
+			auto loclist = val.get_loclist();
+			bool reads_register = false;
+			for (auto i_loc_expr = loclist.begin(); 
+				i_loc_expr != loclist.end(); 
+				++i_loc_expr)
+			{
+				for (auto i_instr = i_loc_expr->begin(); 
+					i_instr != i_loc_expr->end();
+					++i_instr)
+				{
+					if (spec::DEFAULT_DWARF_SPEC.op_reads_register(i_instr->lr_atom))
+					{
+						reads_register = true;
+						break;
+					}
+				}
+				if (reads_register) break;
+			}
+			if (!reads_register)
+			{
+				auto name = i.name_here();
+				cerr << "Found a static or global variable named "
+					<< (name.get() ? name.get() : "(no name)") << endl;
+				static_vars.insert(off);
+				
+				/* To get the address range, we use the adt code for now. This is not so
+				 * bad for performance because we only heap allocate for the DIEs we've
+				 * already identified as static variables. */
+				assert(p_ds);
+				auto found = (*p_ds)[off];
+				assert(found);
+				auto with_static_location
+				 = dynamic_pointer_cast<spec::with_static_location_die>(found);
+				if (!with_static_location)
+				{
+					cerr << "Warning: expected a with_static_location_die, got " 
+						<< found->summary() << endl;
+					continue;
+				}
+				try
+				{
+					boost::icl::interval_map<Dwarf_Addr, Dwarf_Unsigned> out
+					 = with_static_location->file_relative_intervals(nullptr, nullptr);
+					if (out.size() > 1)
+					{
+						cerr << "Warning: expected a single interval, got " << out.size()
+							<< " of them." << endl;
+						continue;
+					}
+					addr_lookup.insert(make_pair(
+						out.begin()->first.lower(),
+						make_pair(
+							off,
+							out.begin()->first.upper() - out.begin()->first.lower()
+						)
+					));
+				}
+				catch (dwarf::lib::Not_supported)
+				{
+					cerr << "Warning: couldn't evaluate location of DIE at 0x"
+						<< std::hex << off << std::dec << endl;
+					continue;
+				}
+			}
+			else
+			{
+				//auto name = i.name_here();
+				//cerr << "Found a local variable named "
+				//	<< (name.get() ? name.get() : "(no name)") << endl;
+			}
+		} 
+	}
+
 }
 
 void process_image::update_i_executable()

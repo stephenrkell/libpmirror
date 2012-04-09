@@ -1,0 +1,19 @@
+THIS_MAKEFILE := $(realpath $(lastword $(MAKEFILE_LIST)))
+SRCROOT := $(dir $(THIS_MAKEFILE))
+
+COMMON_CFLAGS += -I$(SRCROOT)/include
+COMMON_CFLAGS += -I$(MALLOC_HOOKS)
+COMMON_CFLAGS += -std=gnu99 -fpic -g # need gnu99 for Linux-specific mmap() flags
+CFLAGS += $(COMMON_CFLAGS) -O0 
+
+CXXFLAGS += -I../include/pmirror
+CXXFLAGS += -I../include
+#CXXFLAGS += -std=c++0x -g
+CXXFLAGS += -std=c++0x
+CXXFLAGS += -fPIC -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
+
+LDFLAGS += -L$(SRCROOT)/src -Wl,-R$(SRCROOT)/src -L$(SRCROOT)/lib -Wl,-R$(SRCROOT)/lib
+
+# get the architecture, with override for this stupid i386/i686 confusion
+UNWIND_ARCH := $(shell case $$(uname -m) in (i?86) echo x86;; (*) echo $$(uname -m);; esac)
+$(warning UNWIND_ARCH is $(UNWIND_ARCH))
