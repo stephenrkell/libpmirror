@@ -66,6 +66,7 @@ process_image::discover_object_descr(addr_t addr,
 			cerr << 
 				"Warning: static object DIE search failed for static object at 0x" 
 				<< std::hex << addr << std::dec << endl;
+			goto discovery_failed;
 		} break;
 		case STACK: {
 			// DEBUG: dump the stack first
@@ -81,7 +82,7 @@ process_image::discover_object_descr(addr_t addr,
 					<< discovered_obj->summary() << " at 0x" << std::hex << addr << std::dec << endl;
 				else /* didn't discover anything */ cerr << "Warning: stack object DIE search found nothing "
 					<< " for object at 0x" << std::hex << addr << std::dec << endl;
-				return boost::shared_ptr<spec::basic_die>();
+				goto discovery_failed;
 			}
 		}
 		case HEAP: {
@@ -94,8 +95,10 @@ process_image::discover_object_descr(addr_t addr,
 		default:
 		case UNKNOWN:
 			std::cerr << "Warning: unknown kind of memory at 0x" << std::hex << addr << std::dec << std::endl;
-			return boost::shared_ptr<spec::basic_die>();
-	}
+			goto discovery_failed;
+	} // end switch
+discovery_failed:
+	return boost::shared_ptr<spec::basic_die>();
 }
 
 const char *process_image::name_for_memory_kind(int k) // relaxation for ltrace++

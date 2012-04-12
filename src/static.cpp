@@ -189,25 +189,32 @@ process_image::cu_iterator_for_dieset_relative_addr(
 	auto& lookup = i_file->second.p_root->addr_lookup;
 	auto upper_bound = lookup.upper_bound(dieset_relative_addr);
 	auto found = srk31::greatest_le_from_upper_bound(lookup.begin(), lookup.end(), upper_bound,
-		dieset_relative_addr);
+		make_pair(dieset_relative_addr, make_pair(0ULL, 0UL)), lookup.value_comp());
 	if (found != lookup.end())
 	{
 		cerr << "Found static var, start 0x" << std::hex << found->first << std::dec
 			<< ", length " << found->second.second << ", in compile unit at 0x" 
 			<< std::hex << found->second.first << std::dec << endl;
-		assert(false);
-	
+		
+		/* Okay -- make the iterator. */
+		abstract_dieset::path_type path;
+		path.push_back(0UL);
+		path.push_back(found->second.first);
+		abstract_dieset::position_and_path(
+			(abstract_dieset::position){ i_file->second.p_ds.get(), path.back() },
+			path);
 	}
 	else if (found == lookup.end())
 	{
-		cerr << "Did not find static var." << endl;
-		return i_file->second.p_ds->end();
+		cerr << "Did not find static var. Will try subroutines." << endl;
 	}
 
-#if 0
 	/* Use aranges */
 	auto& aranges = i_file->second.p_df->get_aranges();
-	cerr << "aranges has " << aranges.count() << " entries." << endl;
+	cerr << "aranges has " << aranges.count() << " entries (really: " 
+		<< aranges.cnt
+		<< " (base at " << aranges.arange_block_base()
+		<< ")." << endl;
 	lib::Dwarf_Addr start;
 	lib::Dwarf_Unsigned len;
 	lib::Dwarf_Off cu_off;
@@ -229,10 +236,9 @@ process_image::cu_iterator_for_dieset_relative_addr(
 	}
 	else
 	{
-		cerr << "Did not find arange." << endl;
+		cerr << "Did not find arange (" << /*dwarf_errmsg(*aranges.p_last_error) <<*/ ")." << endl;
 		return i_file->second.p_ds->end();
 	}
-#endif
 }
 
 
@@ -449,6 +455,13 @@ process_image::find_containing_die_for_absolute_addr(unw_word_t addr, bool inner
 			[](const basic_die& d) { return true; }, // pred
 			innermost // innermost?
 		);
+	if (!found) 
+	{
+		cerr << "Static DIE lookup failed for 0x"
+			<< std::hex << addr << std::dec
+			<< ". Object has no debug info, or perhaps is a linker artifact?" << endl;
+		return shared_ptr<with_static_location_die>();
+	}
 	auto found_with_static_location = dynamic_pointer_cast<with_static_location_die>(found);
 	assert(found); // cast should not fail
 	return found;
@@ -463,7 +476,11 @@ process_image::find_containing_die_for_absolute_addr(
 	optional<abstract_dieset::iterator> start_here /* = optional<abstract_dieset::iterator>() */)
 {
 	process_image::files_iterator found_file = find_file_for_addr(addr);
-	assert (found_file != this->files.end());
+	if (found_file == this->files.end())
+	{
+		cerr << "Warning: no file found for addr 0x" << std::hex << addr << std::dec << endl;
+		return shared_ptr<with_static_location_die>();
+	}
 	abstract_dieset& ds = *found_file->second.p_ds;
 	unw_word_t dieset_relative_addr = addr - get_dieset_base(ds);
 

@@ -52,6 +52,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 		// look for the next address strictly smaller
 		auto upper_bound = informed_heap_descrs.upper_bound(heap_loc);
 		if (upper_bound != informed_heap_descrs.end()
+			&& upper_bound->second
 			&& upper_bound->second->calculate_byte_size()
 			&& *upper_bound->second->calculate_byte_size() < heap_loc - upper_bound->first)
 		{
