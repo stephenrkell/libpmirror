@@ -24,7 +24,7 @@ extern "C" {
 namespace pmirror {
 
 using namespace dwarf;
-/*using namespace dwarf::lib;*/ // omitted to remove Elf ambiguity
+using namespace dwarf::lib; // was: omitted to remove Elf ambiguity
 using std::string;
 using std::cerr;
 using std::endl;
@@ -104,6 +104,7 @@ static map<pair<string, size_t>, vector<string> > allocsite_typenames = {
 	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(528) }, (vector<string>){ "dirent" } }, 
 	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(2320) }, (vector<string>){ "mount" } }, 
 	{ { "kmem_alloc", USABLE_SIZE_FROM_OBJECT_SIZE(2836) }, (vector<string>){ "tmpfs_mount" } }, 
+	{ { "pool_cache_get_paddr", 196 }, (vector<string>){ "signed char" } }, // HACK
 	{ { "makefooblahfunc", 42 }, (vector<string>){ "foo", "blah" } }
 };
 
@@ -135,16 +136,14 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 		 * If we have dladdr and are statically linked, use that. 
 		 * Otherwise use nearest_preceding_symbol. */
 		optional<string> allocsite_symname;
+		optional<addr_t> allocsite_symaddr;
 		addr_t allocsite_real_addr = 0UL;
+#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
 #if HAVE_DLADDR
 		if (!is_statically_linked)
-#else 
-		if (false)
-#endif
 		{
 		/* 2. Guess what DWARF types were allocated at that allocation site. */
 			shared_ptr<type_die> alloc_t;
-			#define TOPBIT_MASK (1UL<<(WORD_BITSIZE-1))
 			for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
 			{
 				addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
@@ -155,11 +154,13 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				if (err != 0) /* note unusual error reporting convention */
 				{
 					allocsite_symname = string(dli.dli_sname);
+					allocsite_symaddr = optional<Dwarf_Addr>((Dwarf_Addr) dli.dli_saddr);
 					allocsite_real_addr = addr_to_test;
 					break;
 				}
 			}
 		}
+#endif
 		
 		if (!allocsite_symname)
 		{
@@ -168,15 +169,17 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 			for (unsigned mask = 0; mask != ~0UL; mask = (mask == 0) ? TOPBIT_MASK : ~0UL)
 			{
 				addr_t addr_to_test = ((addr_t) ret->alloc_site) | mask;
+				addr_t symstart;
 				bool success = this->nearest_preceding_symbol(addr_to_test,
 					&symname,
-					0,
+					&symstart,
 					0,
 					0
 				);
 				if (success)
 				{
 					allocsite_symname = symname;
+					allocsite_symaddr = optional<Dwarf_Addr>(symstart);
 					allocsite_real_addr = addr_to_test;
 					break;
 				}
@@ -187,9 +190,10 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				}
 			}
 		}
-
+#undef TOPBIT_MASK
 		if (allocsite_symname)
 		{
+			assert(allocsite_symaddr);
 			/* We succeeded, by one method or another */
 			auto found = allocsite_typenames.find(
 				make_pair(*allocsite_symname, usable_size));
@@ -221,7 +225,8 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				cerr << "Failed to recognise allocsite 0x" 
 					<< std::hex << allocsite_real_addr << std::dec
 					<< " (symbol: " << *allocsite_symname 
-						<< ", padded_object size: " << padded_object_size << ")" << endl;
+					<< ", offset: 0x" << std::hex << (allocsite_real_addr - *allocsite_symaddr) << std::dec
+						<< ", padded object size: " << padded_object_size << ")" << endl;
 			}
 		}
 		else

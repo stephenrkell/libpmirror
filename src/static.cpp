@@ -129,7 +129,7 @@ process_image::nearest_preceding_symbol(addr_t addr,
 	if (result != addr_to_sym_map.end())
 	{
 		*out_sym_name = result->second ? string(result->second) : string();
-		assert(!out_sym_start);
+		if (out_sym_start) *out_sym_start = result->first;
 		assert(!out_sym_size);
 		assert(!out_object_fname);
 		return true;
