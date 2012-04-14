@@ -232,7 +232,34 @@ process_image::root_die_with_static_index::root_die_with_static_index(
 	using dwarf::lib::Dwarf_Unsigned;
 	
 	cerr << "Searching for variables..." << endl;
-	for (auto i = this->begin(); i != this->end(); ++i)
+	
+	const char *sranges_start_cu_string = getenv("SRANGES_START_CU");
+	core::iterator_df<> begin;
+	if (!sranges_start_cu_string) begin = this->begin();
+	else
+	{
+		string s(sranges_start_cu_string);
+		std::istringstream start_in(s);
+		unsigned off;
+		start_in >> off;
+		auto handle = core::Die::try_construct(*this, off);
+		begin = std::move(core::iterator_df<>(core::iterator_base(handle, 1, *this)));
+	}
+	
+	const char *sranges_end_cu_string = getenv("SRANGES_END_CU");
+	core::iterator_df<> end;
+	if (!sranges_end_cu_string) end = this->end();
+	else
+	{
+		string s(sranges_end_cu_string);
+		std::istringstream end_in(s);
+		unsigned off;
+		end_in >> off;
+		auto handle = core::Die::try_construct(*this, off);
+		end = std::move(core::iterator_df<>(core::iterator_base(handle, 1, *this)));
+	}
+	
+	for (core::iterator_df<> i = std::move(begin); i != end; ++i)
 	{
 		Dwarf_Off off = i.offset_here();
 		if (i.tag_here() == DW_TAG_variable
@@ -299,6 +326,7 @@ process_image::root_die_with_static_index::root_die_with_static_index(
 							out.begin()->first.upper() - out.begin()->first.lower()
 						)
 					));
+					cerr << "addr_lookup now has " << addr_lookup.size() << " entries." << endl;
 				}
 				catch (dwarf::lib::Not_supported)
 				{

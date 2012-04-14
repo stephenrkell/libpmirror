@@ -46,24 +46,25 @@ process_image::discover_heap_object(addr_t heap_loc,
 	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
 	addr_t *out_object_start_addr)
 {
-	auto found = informed_heap_descrs.find(heap_loc);
-	if (found == informed_heap_descrs.end())
+	// look for an informed object with equal or lower starting address
+	auto upper_bound = informed_heap_descrs.upper_bound(heap_loc);
+	auto greatest_le = srk31::greatest_le_from_upper_bound(
+		informed_heap_descrs.begin(), informed_heap_descrs.end(), upper_bound,
+		// const long unsigned int&, std::pair<const long unsigned int, boost::shared_ptr<dwarf::spec::type_die>
+		make_pair(heap_loc, boost::shared_ptr<dwarf::spec::type_die>()), 
+		informed_heap_descrs.value_comp());
+	if (greatest_le != informed_heap_descrs.end()
+		&& greatest_le->second
+		&& greatest_le->second->calculate_byte_size()
+		&& *greatest_le->second->calculate_byte_size() < heap_loc - upper_bound->first)
 	{
-		// look for the next address strictly smaller
-		auto upper_bound = informed_heap_descrs.upper_bound(heap_loc);
-		if (upper_bound != informed_heap_descrs.end()
-			&& upper_bound->second
-			&& upper_bound->second->calculate_byte_size()
-			&& *upper_bound->second->calculate_byte_size() < heap_loc - upper_bound->first)
-		{
-			found = upper_bound;
-		}
-	}
-	
-	if (found != informed_heap_descrs.end())
-	{
-		if (out_object_start_addr) *out_object_start_addr = (addr_t) found->first;
-		return dynamic_pointer_cast<dwarf::spec::basic_die>(found->second);
+		if (out_object_start_addr) *out_object_start_addr = (addr_t) greatest_le->first;
+		cerr << "From what the user has informed us, we think that 0x" 
+			<< std::hex << heap_loc << std::dec
+			<< " is " << (heap_loc - (addr_t) greatest_le->first) << " bytes into an object beginning at 0x"
+			<< std::hex << (addr_t) greatest_le->first << std::dec
+			<< " described by " << greatest_le->second->summary() << endl;
+		return dynamic_pointer_cast<dwarf::spec::basic_die>(greatest_le->second);
 	}
 	else if (is_local)
 	{
@@ -101,6 +102,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 static map<pair<string, size_t>, vector<string> > allocsite_typenames = {
 	{ { "_puffs_init", /*1102*/ USABLE_SIZE_FROM_OBJECT_SIZE(1100) }, (vector<string>){ "puffs_usermount" } },
 	{ { "_puffs_init", /*3382*/ USABLE_SIZE_FROM_OBJECT_SIZE(3380) }, (vector<string>){ "puffs_kargs" } },
+	{ { "puffs_framebuf_make", 120 /*USABLE_SIZE_FROM_OBJECT_SIZE(44? 114?)*/ }, (vector<string>){ "puffs_cred" } },
 	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(528) }, (vector<string>){ "dirent" } }, 
 	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(2320) }, (vector<string>){ "mount" } }, 
 	{ { "kmem_alloc", USABLE_SIZE_FROM_OBJECT_SIZE(2836) }, (vector<string>){ "tmpfs_mount" } }, 
@@ -304,6 +306,13 @@ void process_image::inform_heap_object_descr(
 	/* Here we let the user tell us the DWARF type of a heap object,
 	 * such that later calls will discover this information. */
 	informed_heap_descrs.insert(std::make_pair(addr, descr));
+}
+
+void process_image::forget_heap_object_descr(
+	addr_t addr
+	)
+{
+	informed_heap_descrs.erase(addr);
 }
 
 /* static */ const char *process_image::alloc_list_lib_basename = "libpmirror.so";

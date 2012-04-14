@@ -1,15 +1,16 @@
 include ../Makerules.common
 
+#libpmirror.so \
+#librtti.so \
+#libreflect.so \
+
 default: \
-libpmirror.so \
 libpmirror.a \
 libheap_index_hooks.so \
 libheap_index_fast_hooks.so \
 libheap_index_preload_hooks.so \
 libheap_index_preload_fast_hooks.so \
 libheap_index_wrap_hooks.a \
-librtti.so \
-libreflect.so \
 libreflect.a
 
 # libheap_index_wrap_fast_hooks.a \

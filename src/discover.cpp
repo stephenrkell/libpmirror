@@ -122,7 +122,7 @@ std::ostream& operator<<(std::ostream& s, const process_image::memory_kind& k)
 process_image::memory_kind process_image::discover_object_memory_kind_from_maps(addr_t addr) const
 {
 	/* HACK: ensure we're up-to-date */ 
-	const_cast<process_image *>(this)->update();
+	/* const_cast<process_image *>(this)->update(); */
 	cerr << "discover_object_memory_kind_from_maps: End of data segment is 0x" 
 		<< std::hex << ::end << std::dec << endl;
 	cerr << "discover_object_memory_kind_from_maps: End of initialised data segment is 0x" 

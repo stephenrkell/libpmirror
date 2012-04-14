@@ -82,7 +82,7 @@ process_image::process_image(pid_t pid /* = -1 */)
 		assert(false);
 #endif
 	}
-	//update();
+	update();
 }
 //process_image::process_image(pid_t pid) {}
 

@@ -421,6 +421,9 @@ public:
 	inform_heap_object_descr(
 		addr_t addr,
 		shared_ptr<type_die>);
+	void 
+	forget_heap_object_descr(
+		addr_t addr);
 private:
 	map<addr_t, shared_ptr<type_die> > informed_heap_descrs;
 

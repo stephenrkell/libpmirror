@@ -208,37 +208,11 @@ process_image::cu_iterator_for_dieset_relative_addr(
 	{
 		cerr << "Did not find static var. Will try subroutines." << endl;
 	}
-
-	/* Use aranges */
-	auto& aranges = i_file->second.p_df->get_aranges();
-	cerr << "aranges has " << aranges.count() << " entries (really: " 
-		<< aranges.cnt
-		<< " (base at " << aranges.arange_block_base()
-		<< ")." << endl;
-	lib::Dwarf_Addr start;
-	lib::Dwarf_Unsigned len;
-	lib::Dwarf_Off cu_off;
-	int ret = aranges.get_info_for_addr(
-		dieset_relative_addr, &start, &len, &cu_off
+	
+	return cu_iterator_for_absolute_ip(
+		get_dieset_base(*i_file->second.p_ds) + dieset_relative_addr
 	);
-	if (ret == DW_DLV_OK)
-	{
-		cerr << "Found arange, start 0x" << std::hex << start << std::dec
-			<< ", length " << len << ", in compile unit at 0x" 
-			<< std::hex << cu_off << std::dec << endl;
-			
-		abstract_dieset::path_type path;
-		path.push_back(0UL);
-		path.push_back(cu_off);
-		return abstract_dieset::position_and_path(
-			(abstract_dieset::position){ i_file->second.p_ds.get(), path.back() },
-			path);
-	}
-	else
-	{
-		cerr << "Did not find arange (" << /*dwarf_errmsg(*aranges.p_last_error) <<*/ ")." << endl;
-		return i_file->second.p_ds->end();
-	}
+
 }
 
 
@@ -422,23 +396,61 @@ process_image::find_compile_unit_for_absolute_ip(unw_word_t ip)
 abstract_dieset::iterator
 process_image::cu_iterator_for_absolute_ip(unw_word_t ip)
 {
-	process_image::files_iterator found_file = find_file_for_addr(ip);
-	assert(found_file != this->files.end());
-	abstract_dieset& ds = *found_file->second.p_ds;
-	auto base_addr = get_dieset_base(ds);
-	assert(ip >= base_addr);
+	auto i_file = find_file_for_addr(ip);
+	auto dieset_relative_addr = (addr_t) ip - get_dieset_base(*i_file->second.p_ds);
 	
-	auto p_toplevel = dynamic_pointer_cast<lib::file_toplevel_die>(ds.toplevel());
-	
-	auto found = p_toplevel->cu_intervals.find(ip - base_addr);
-	assert(found != p_toplevel->cu_intervals.end());
-	Dwarf_Off found_off = found->second;
-	abstract_dieset::path_type path(1, 0UL);
-	path.push_back(found->second);
-	return abstract_dieset::position_and_path(
-		(abstract_dieset::position){ found_file->second.p_ds.get(), found->second }, 
-		path
+	/* Use aranges */
+	auto& aranges = i_file->second.p_df->get_aranges();
+	cerr << "aranges has " << aranges.count() << " entries (really: " 
+		<< aranges.cnt
+		<< " (base at " << aranges.arange_block_base()
+		<< ")." << endl;
+	lib::Dwarf_Addr start;
+	lib::Dwarf_Unsigned len;
+	lib::Dwarf_Off cu_off;
+	int ret = aranges.get_info_for_addr(
+		dieset_relative_addr, &start, &len, &cu_off
 	);
+	if (ret == DW_DLV_OK)
+	{
+		cerr << "Found arange, start 0x" << std::hex << start << std::dec
+			<< ", length " << len << ", in compile unit at 0x" 
+			<< std::hex << cu_off << std::dec << endl;
+			
+		abstract_dieset::path_type path;
+		path.push_back(0UL);
+		path.push_back(cu_off);
+		return abstract_dieset::position_and_path(
+			(abstract_dieset::position){ i_file->second.p_ds.get(), path.back() },
+			path);
+	}
+	else
+	{
+		cerr << "Did not find arange (" << /*dwarf_errmsg(*aranges.p_last_error) <<*/ ")." << endl;
+		return i_file->second.p_ds->end();
+	}
+	
+// 	// this is the interval map implementation -- shelved for now
+// 	
+// 	process_image::files_iterator found_file = find_file_for_addr(ip);
+// 	assert(found_file != this->files.end());
+// 	abstract_dieset& ds = *found_file->second.p_ds;
+// 	auto base_addr = get_dieset_base(ds);
+// 	assert(ip >= base_addr);
+// 	
+// 	auto p_toplevel = dynamic_pointer_cast<lib::file_toplevel_die>(ds.toplevel());
+// 	
+// 	auto found = p_toplevel->cu_intervals.find(ip - base_addr);
+// 	assert(found != p_toplevel->cu_intervals.end());
+// 	Dwarf_Off found_off = found->second;
+// 	abstract_dieset::path_type path(1, 0UL);
+// 	path.push_back(found->second);
+// 	return abstract_dieset::position_and_path(
+// 		(abstract_dieset::position){ found_file->second.p_ds.get(), found->second }, 
+// 		path
+// 	);
+	
+	// this is the naive implementation -- must die!
 	
 // 	auto found = find_containing_die_for_absolute_addr(
 // 		ip,
