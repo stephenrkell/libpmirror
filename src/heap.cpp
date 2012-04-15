@@ -56,7 +56,8 @@ process_image::discover_heap_object(addr_t heap_loc,
 	if (greatest_le != informed_heap_descrs.end()
 		&& greatest_le->second
 		&& greatest_le->second->calculate_byte_size()
-		&& *greatest_le->second->calculate_byte_size() < heap_loc - upper_bound->first)
+		&& heap_loc >= upper_bound->first
+		&& *greatest_le->second->calculate_byte_size() > heap_loc - upper_bound->first)
 	{
 		if (out_object_start_addr) *out_object_start_addr = (addr_t) greatest_le->first;
 		cerr << "From what the user has informed us, we think that 0x" 
@@ -107,6 +108,7 @@ static map<pair<string, size_t>, vector<string> > allocsite_typenames = {
 	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(2320) }, (vector<string>){ "mount" } }, 
 	{ { "kmem_alloc", USABLE_SIZE_FROM_OBJECT_SIZE(2836) }, (vector<string>){ "tmpfs_mount" } }, 
 	{ { "pool_cache_get_paddr", 196 }, (vector<string>){ "signed char" } }, // HACK
+	{ { "pool_cache_get_paddr", 172 }, (vector<string>){ "kauth_cred" } }, // HACK
 	{ { "makefooblahfunc", 42 }, (vector<string>){ "foo", "blah" } }
 };
 
@@ -207,6 +209,15 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 				auto subp = find_subprogram_for_absolute_ip(allocsite_real_addr);
 				assert(subp && subp->get_tag() == DW_TAG_subprogram);
 				auto t = subp->enclosing_compile_unit()->resolve(vec.begin(), vec.end());
+				if (!t)
+				{
+					/* searching in the local compile unit didn't work, so broaden to the
+					 * whole component */
+					auto found_visible = subp->get_ds().toplevel()->resolve_visible(
+						vec.begin(), vec.end()
+						);
+					if (found_visible) t = dynamic_pointer_cast<spec::type_die>(found_visible);
+				}
 				assert(t);
 				auto alloc_t = dynamic_pointer_cast<type_die>(t);
 				if (alloc_t) 
@@ -218,7 +229,11 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 					// FIXME: now use the flag when doing lookup
 
 					// return
-					cerr << "Recognised allocsite; returning type " << alloc_t->summary() << endl;
+					cerr << "Recognised allocsite of object at 0x" 
+						<< std::hex << heap_loc << std::dec << " as offset 0x" 
+						<< std::hex << (allocsite_real_addr - *allocsite_symaddr) << std::dec
+						<< " from symbol " << *allocsite_symname
+						<< " allocating type " << alloc_t->summary() << endl;
 					return alloc_t;
 				}
 			}
