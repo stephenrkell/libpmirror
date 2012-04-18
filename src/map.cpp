@@ -243,7 +243,7 @@ process_image::root_die_with_static_index::root_die_with_static_index(
 		unsigned off;
 		start_in >> off;
 		auto handle = core::Die::try_construct(*this, off);
-		begin = std::move(core::iterator_df<>(core::iterator_base(handle, 1, *this)));
+		begin = std::move(core::iterator_df<>(core::iterator_base(std::move(handle), 1, *this)));
 	}
 	
 	const char *sranges_end_cu_string = getenv("SRANGES_END_CU");
@@ -256,7 +256,7 @@ process_image::root_die_with_static_index::root_die_with_static_index(
 		unsigned off;
 		end_in >> off;
 		auto handle = core::Die::try_construct(*this, off);
-		end = std::move(core::iterator_df<>(core::iterator_base(handle, 1, *this)));
+		end = std::move(core::iterator_df<>(core::iterator_base(std::move(handle), 1, *this)));
 	}
 	
 	for (core::iterator_df<> i = std::move(begin); i != end; ++i)
