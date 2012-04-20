@@ -330,12 +330,18 @@ public:
 		{
 			memory_kind retval = get_object_memory_kind((void*) addr);
 			if (retval != UNKNOWN) return retval;
+			cerr << "Falling back on state-based techniques to classify 0x" 
+				<< std::hex << addr << std::dec << endl;
 			// we have one trick left: use sbrk, which can rule out static
 			// BUT only if we have a reliable end, without which we won't
 			// have detected STATIC cases in get_object_memory_kind
 			if (end != 0 && addr < (unsigned long) sbrk(0)) return HEAP;
 			// to handle the "end == 0" case, we also grab the sbrk(0) at startup
+#ifndef ALLOW_HEAP_MAPPING_BEFORE_STARTUP_BRK
+			/* On NetBSD, it seems that heap allocations are always after startup_brk. 
+			 * But on Linux, the [heap] mapping comes before startup_brk. */
 			if (addr < startup_brk) return STATIC;
+#endif
 			if (end == 0 && addr >= startup_brk && addr < (unsigned long) sbrk(0)) return HEAP;
 			// otherwise, fall through
 			cerr << "Warning: falling back on maps to identify " 

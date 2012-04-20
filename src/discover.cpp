@@ -40,8 +40,12 @@ process_image::discover_object_descr(addr_t addr,
 	cerr << "discover_object_descr: End of initialised data segment is 0x" 
 		<< std::hex << ::edata << std::dec << endl;
 	cerr << "discover_object_descr: Program break is " << sbrk(0) << endl;
-
-	switch(discover_object_memory_kind(addr))
+	cerr << "discover_object_descr: Program break at startup was 0x" 
+		<< std::hex << startup_brk << std::dec << endl;
+	auto kind = discover_object_memory_kind(addr);
+	cerr << "Memory kind for 0x" << std::hex << addr << std::dec
+		<< " identified as " << name_for_memory_kind(kind) << endl;
+	switch(kind)
 	{
 		case ANON:
 		case STATIC: {

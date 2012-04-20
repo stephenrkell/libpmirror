@@ -173,7 +173,7 @@ process_image::find_file_for_addr(unw_word_t addr)
          * like "/usr/lib/gconv/gconv-modules.cache\000..."*/
         std::cerr << "Warning: object at " << (void*) i_entry->first.first
          << " (description: '" << i_entry->second.seg_descr << "') "
-         << " has no entry in files map" << std::endl;
+         << " has no entry in files map; assuming part of executable." << std::endl;
 		// HMM: on NetBSD it happens for BSS segments of the executable
 		return i_executable;
         //return files.end();

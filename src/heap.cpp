@@ -56,8 +56,8 @@ process_image::discover_heap_object(addr_t heap_loc,
 	if (greatest_le != informed_heap_descrs.end()
 		&& greatest_le->second
 		&& greatest_le->second->calculate_byte_size()
-		&& heap_loc >= upper_bound->first
-		&& *greatest_le->second->calculate_byte_size() > heap_loc - upper_bound->first)
+		&& heap_loc >= greatest_le->first
+		&& *greatest_le->second->calculate_byte_size() > heap_loc - greatest_le->first)
 	{
 		if (out_object_start_addr) *out_object_start_addr = (addr_t) greatest_le->first;
 		cerr << "From what the user has informed us, we think that 0x" 
@@ -67,7 +67,16 @@ process_image::discover_heap_object(addr_t heap_loc,
 			<< " described by " << greatest_le->second->summary() << endl;
 		return dynamic_pointer_cast<dwarf::spec::basic_die>(greatest_le->second);
 	}
-	else if (is_local)
+	else 
+	{
+		cerr << "We have not been informed about this heap object (greatest_le: ";
+		if (greatest_le !=	informed_heap_descrs.end())
+		{
+			cerr << "0x" << std::hex << greatest_le->first << std::dec << ")" << endl;
+		} else cerr << "none found)" << endl;
+	}
+	
+	if (is_local)
 	{
 		/* use the local version */
 		return discover_heap_object_local(heap_loc, 
