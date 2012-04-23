@@ -300,6 +300,12 @@ public:
 	discover_object(
 		addr_t addr,
 		addr_t *out_object_start_addr);
+	
+	/* Get the allocating CU for an object -- a cheaper variant of full discovery. */
+	boost::shared_ptr<spec::compile_unit_die> 
+	discover_allocating_cu_for_object(addr_t addr, 
+		boost::shared_ptr<spec::type_die> imprecise_static_type
+		= shared_ptr<spec::type_die>());
 
 	/* Construction, update and destruction. */
 public:
@@ -447,6 +453,14 @@ private:
 	discover_heap_object_remote(addr_t addr,
 		shared_ptr<type_die> imprecise_static_type,
 		addr_t *out_object_start_addr);
+
+	// helper
+	addr_t
+	allocsite_for_heap_object_local(addr_t heap_loc,
+		addr_t *out_object_start_addr,
+		string *out_allocsite_symname,
+		size_t *out_usable_size,
+		addr_t *out_allocsite_symaddr);	
 
 	/* Symbols and linker-related functions. */
 public:

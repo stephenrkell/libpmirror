@@ -255,9 +255,14 @@ int stack_object_discovery_handler(process_image *image,
 					<< "; object discovery may miss objects in this frame."   // current sp as callee bp
 					<< std::endl;
 			}
+			// HACK: we subtract 1 from the dieset_relative_ip when computing a vaddr, 
+			// because before this sibtraction, it will point to the next instruction
+			// on return to the frame, whereas we want the actual instruction that is
+			// current. Without this adjustment, we are liable to get off-by-one errors
+			// when looking up the relevant DWARF location list entry.
 			auto ret = callee_subp->contains_addr_as_frame_local_or_argument(
 				addr,
-				static_cast<dwarf::lib::Dwarf_Off>(dieset_relative_ip), 
+				static_cast<dwarf::lib::Dwarf_Off>(dieset_relative_ip) - 1, 
 				&frame_base,
 				&my_regs);
 			if (ret) 
@@ -288,9 +293,10 @@ int stack_object_discovery_handler(process_image *image,
     // - reinterpret_cast<unw_word_t>(dieset_base);
     libunwind_regs my_regs(&frame_cursor); 
     dwarf::lib::Dwarf_Signed frame_base;
+	// HACK: subtract 1 below; see comment above
     auto ret = frame_subp->contains_addr_as_frame_local_or_argument(
         addr,
-        static_cast<dwarf::lib::Dwarf_Off>(dieset_relative_ip), 
+        static_cast<dwarf::lib::Dwarf_Off>(dieset_relative_ip) - 1, 
         &frame_base, 
         &my_regs);
     if (ret) 

@@ -105,6 +105,78 @@ discovery_failed:
 	return boost::shared_ptr<spec::basic_die>();
 }
 
+boost::shared_ptr<spec::compile_unit_die> 
+process_image::discover_allocating_cu_for_object(addr_t addr, 
+	boost::shared_ptr<spec::type_die> imprecise_static_type /* = null ptr */)
+{
+	cerr << "discover_allocating_cu_for_object: End of data segment is 0x" 
+		<< std::hex << ::end << std::dec << endl;
+	cerr << "discover_allocating_cu_for_object: End of initialised data segment is 0x" 
+		<< std::hex << ::edata << std::dec << endl;
+	cerr << "discover_allocating_cu_for_object: Program break is " << sbrk(0) << endl;
+	cerr << "discover_allocating_cu_for_object: Program break at startup was 0x" 
+		<< std::hex << startup_brk << std::dec << endl;
+	auto kind = discover_object_memory_kind(addr);
+	cerr << "Memory kind for 0x" << std::hex << addr << std::dec
+		<< " identified as " << name_for_memory_kind(kind) << endl;
+	addr_t object_start_addr;
+	switch(kind)
+	{
+		case ANON:
+		case STATIC: {
+			auto discovered_obj = discover_object(addr, &object_start_addr);
+			if (discovered_obj)
+			{
+				return discovered_obj->enclosing_compile_unit();
+			}
+			cerr << 
+				"Warning: static object DIE search failed for static object at 0x" 
+				<< std::hex << addr << std::dec << endl;
+			goto discovery_failed;
+		} break;
+		case STACK: {
+			auto discovered_obj = discover_stack_object(addr, &object_start_addr, 0, 0);
+			if (discovered_obj) return discovered_obj->enclosing_compile_unit();
+			else 
+			{
+				cerr << "Warning: stack object DIE search found nothing "
+					<< " for object at 0x" << std::hex << addr << std::dec << endl;
+				goto discovery_failed;
+			}
+		}
+		case HEAP: {
+			/* Don't do the full discovery, just get the CU. */
+			addr_t object_start_addr;
+			string allocsite_symname;
+			size_t usable_size;
+			auto allocsite_real_addr = allocsite_for_heap_object_local(addr,
+				&object_start_addr,
+				&allocsite_symname,
+				&usable_size,
+				0 /* allocsite_symaddr */);
+			if (allocsite_real_addr != 0)
+			{
+				auto i_cu = cu_iterator_for_absolute_ip(allocsite_real_addr);
+				auto p_cu = *i_cu;
+				assert(p_cu);
+				return dynamic_pointer_cast<compile_unit_die>(p_cu);
+			}
+			else 
+			{
+				cerr << "Warning: heap object DIE search found nothing "
+					<< " for object at 0x" << std::hex << addr << std::dec << endl;
+				goto discovery_failed;
+			}
+		}
+		default:
+		case UNKNOWN:
+			std::cerr << "Warning: unknown kind of memory at 0x" << std::hex << addr << std::dec << std::endl;
+			goto discovery_failed;
+	} // end switch
+discovery_failed:
+	return boost::shared_ptr<spec::compile_unit_die>();
+}
+
 const char *process_image::name_for_memory_kind(int k) // relaxation for ltrace++
 {
 	switch(k)
