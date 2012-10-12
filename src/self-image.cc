@@ -11,7 +11,7 @@ using namespace pmirror;
 
 namespace pmirror {
 	int ready;
-	process_image self(-1);
+	process_image self(-1) __attribute__((init_priority(65535)));
 	void *get_self_image(void)
 	{
 		return &self;
@@ -32,7 +32,7 @@ namespace pmirror {
 		process_image *image = reinterpret_cast<process_image*>(img);
 
 		/* Look up types defined in the caller. */
-		boost::shared_ptr<dwarf::spec::compile_unit_die> p_cu =
+		std::shared_ptr<dwarf::spec::compile_unit_die> p_cu =
 			image->find_compile_unit_for_absolute_ip(reinterpret_cast<unw_word_t>(caller)); 
 
 		if (!p_cu)
@@ -54,7 +54,7 @@ namespace pmirror {
 			iter.base().path_from_root.size() > cu_depth;
 			iter++)
 		{
-			auto p_type = boost::dynamic_pointer_cast<dwarf::spec::type_die>(*iter);
+			auto p_type = std::dynamic_pointer_cast<dwarf::spec::type_die>(*iter);
 			if (p_type && p_type->get_concrete_type()
 				&& p_type->get_tag() != DW_TAG_array_type // we handle arrays specially
 				&& p_type->get_concrete_type()->iterator_here() == p_type->iterator_here())

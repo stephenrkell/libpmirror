@@ -6,14 +6,14 @@
 #include <set>
 #include <iostream>
 
-#include <boost/shared_ptr.hpp>
+#include <memory>
 #include <boost/optional.hpp>
 #include <boost/iterator_adaptors.hpp>
 #include <gelf.h>
 
 namespace pmirror
 {
-	using boost::shared_ptr;
+	using std::shared_ptr;
 	using boost::dynamic_pointer_cast;
 	using boost::optional;
 	using std::vector;

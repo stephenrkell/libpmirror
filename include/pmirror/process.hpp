@@ -12,7 +12,6 @@
 
 #include <link.h>
 
-#include <boost/shared_ptr.hpp>
 #include <boost/optional.hpp>
 #include <boost/graph/graph_traits.hpp>
 #include <boost/iterator_adaptors.hpp>
@@ -51,7 +50,7 @@ namespace pmirror
 
 using namespace dwarf;
 using boost::graph_traits;
-using boost::shared_ptr;
+using std::shared_ptr;
 using boost::dynamic_pointer_cast;
 using boost::optional;
 using dwarf::spec::type_die;
@@ -83,7 +82,7 @@ shared_ptr<basic_die> resolve_first(
 	bool(*pred)(basic_die&) = 0);
 
 /* We record the program break at startup, for memory kind detection. */
-extern intptr_t startup_brk;
+//extern intptr_t startup_brk;
 
 struct process_image
 {
@@ -302,9 +301,9 @@ public:
 		addr_t *out_object_start_addr);
 	
 	/* Get the allocating CU for an object -- a cheaper variant of full discovery. */
-	boost::shared_ptr<spec::compile_unit_die> 
+	std::shared_ptr<spec::compile_unit_die> 
 	discover_allocating_cu_for_object(addr_t addr, 
-		boost::shared_ptr<spec::type_die> imprecise_static_type
+		std::shared_ptr<spec::type_die> imprecise_static_type
 		= shared_ptr<spec::type_die>());
 
 	/* Construction, update and destruction. */
@@ -336,19 +335,19 @@ public:
 		{
 			memory_kind retval = get_object_memory_kind((void*) addr);
 			if (retval != UNKNOWN) return retval;
-			cerr << "Falling back on state-based techniques to classify 0x" 
-				<< std::hex << addr << std::dec << endl;
-			// we have one trick left: use sbrk, which can rule out static
-			// BUT only if we have a reliable end, without which we won't
-			// have detected STATIC cases in get_object_memory_kind
-			if (end != 0 && addr < (unsigned long) sbrk(0)) return HEAP;
-			// to handle the "end == 0" case, we also grab the sbrk(0) at startup
-#ifndef ALLOW_HEAP_MAPPING_BEFORE_STARTUP_BRK
-			/* On NetBSD, it seems that heap allocations are always after startup_brk. 
-			 * But on Linux, the [heap] mapping comes before startup_brk. */
-			if (addr < startup_brk) return STATIC;
-#endif
-			if (end == 0 && addr >= startup_brk && addr < (unsigned long) sbrk(0)) return HEAP;
+// 			cerr << "Falling back on state-based techniques to classify 0x" 
+// 				<< std::hex << addr << std::dec << endl;
+// 			// we have one trick left: use sbrk, which can rule out static
+// 			// BUT only if we have a reliable end, without which we won't
+// 			// have detected STATIC cases in get_object_memory_kind
+// 			if (end != 0 && addr < (unsigned long) sbrk(0)) return HEAP;
+// 			// to handle the "end == 0" case, we also grab the sbrk(0) at startup
+// #ifndef ALLOW_HEAP_MAPPING_BEFORE_STARTUP_BRK
+// 			/* On NetBSD, it seems that heap allocations are always after startup_brk. 
+// 			 * But on Linux, the [heap] mapping comes before startup_brk. */
+// 			if (addr < startup_brk) return STATIC;
+// #endif
+// 			if (end == 0 && addr >= startup_brk && addr < (unsigned long) sbrk(0)) return HEAP;
 			// otherwise, fall through
 			cerr << "Warning: falling back on maps to identify " 
 				<< std::hex << addr << std::dec
@@ -499,7 +498,7 @@ public:
 		Elf *e = 0;
 		if (i->second.p_df) { i->second.p_df->get_elf(&e); }
 		// if we have no df, e will be null and we will get an empty sequence
-		auto p_priv = boost::make_shared<symbols_iteration_state>(e, sh_type);
+		auto p_priv = std::make_shared<symbols_iteration_state>(e, sh_type);
 		symbols_iterator begin((symbols_iterator_base){ 0 }, p_priv);
 		symbols_iterator end((symbols_iterator_base){ p_priv->symcount }, p_priv);
 		return make_pair(begin, end);
@@ -512,7 +511,7 @@ public:
 	{
 		//return symbols(i, SHT_SYMTAB);
 		typedef concatenating_iterator<symbols_iterator> all_symbols_sequence;
-		auto p_seq = boost::make_shared< concatenating_sequence<symbols_iterator> >();
+		auto p_seq = std::make_shared< concatenating_sequence<symbols_iterator> >();
 		auto static_syms = symbols(i, SHT_SYMTAB);
 		p_seq->append(static_syms.first, static_syms.second);
 		return make_pair(p_seq->begin(), p_seq->end());
@@ -524,7 +523,7 @@ public:
 	dynamic_symbols(process_image::files_iterator& i)
 	{
 		typedef concatenating_iterator<symbols_iterator> all_symbols_sequence;
-		auto p_seq = boost::make_shared< concatenating_sequence<symbols_iterator> >();
+		auto p_seq = std::make_shared< concatenating_sequence<symbols_iterator> >();
 		auto dynamic_syms = symbols(i, SHT_DYNSYM);
 		p_seq->append(dynamic_syms.first, dynamic_syms.second);
 		return make_pair(
@@ -539,7 +538,7 @@ public:
 	all_symbols(process_image::files_iterator& i)
 	{
 		typedef concatenating_iterator<symbols_iterator> all_symbols_sequence;
-		auto p_seq = boost::make_shared< concatenating_sequence<symbols_iterator> >();
+		auto p_seq = std::make_shared< concatenating_sequence<symbols_iterator> >();
 		auto dynamic_syms = symbols(i, SHT_SYMTAB);
 		auto static_syms = symbols(i, SHT_DYNSYM);
 		p_seq->append(dynamic_syms.first, dynamic_syms.second);

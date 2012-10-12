@@ -45,8 +45,8 @@ using std::vector;
 
 using boost::dynamic_pointer_cast;
 using boost::optional;
-using boost::shared_ptr;
-using boost::make_shared;
+using std::shared_ptr;
+using std::make_shared;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
@@ -55,12 +55,7 @@ using dwarf::spec::variable_die;
 using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
-intptr_t startup_brk;
-static void save_startup_brk(void) __attribute__((constructor));
-static void save_startup_brk(void)
-{
-	startup_brk = (intptr_t) sbrk(0);
-}
+extern intptr_t startup_brk; /* now in addrmap.c */
 
 void process_image::update()
 {
@@ -268,8 +263,8 @@ process_image::root_die_with_static_index::root_die_with_static_index(
 			/* DWARF doesn't tell us whether a variable is static or not. 
 			 * We want to rule out non-static variables. To do this, we
 			 * rely on our existing lib:: infrastructure. */
-			core::Attribute a(i, DW_AT_location);
-			encap::attribute_value val(a, this->get_dbg());
+			core::Attribute a(i.get_handle(), DW_AT_location);
+			encap::attribute_value val(a, i.get_handle(), i.spec_here());
 			auto loclist = val.get_loclist();
 			bool reads_register = false;
 			for (auto i_loc_expr = loclist.begin(); 
@@ -794,7 +789,7 @@ process_image::addr_t process_image::get_library_base_remote(const std::string& 
 }
     
 void process_image::register_anon_segment_description(addr_t base, 
-        boost::shared_ptr<dwarf::lib::abstract_dieset> p_ds,
+        std::shared_ptr<dwarf::lib::abstract_dieset> p_ds,
         addr_t base_for_dwarf_info)
 {
 	assert(p_ds);
@@ -807,8 +802,8 @@ void process_image::register_anon_segment_description(addr_t base,
         // FIXME: supports only one anonymous region, for now
         files.insert(std::make_pair(
             std::string(ANONYMOUS_REGION_FILENAME),
-            (file_entry) { boost::shared_ptr<std::ifstream>(),
-                            boost::shared_ptr<dwarf::lib::file>(),
+            (file_entry) { std::shared_ptr<std::ifstream>(),
+                            std::shared_ptr<dwarf::lib::file>(),
                             p_ds }
         ));
     }

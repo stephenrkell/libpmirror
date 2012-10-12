@@ -9,17 +9,17 @@ static void print_dies(unw_word_t ip)
 {
     process_image::files_iterator i_file = me.find_file_for_ip(ip);
     
-    boost::shared_ptr<dwarf::spec::compile_unit_die> p_cu 
+    std::shared_ptr<dwarf::spec::compile_unit_die> p_cu 
      = me.find_compile_unit_for_ip(ip);
     if (p_cu) std::cout << "Found compile unit: " << *p_cu << std::endl;
     else std::cout << "Didn't find a compile unit." << std::endl;
      
-    boost::shared_ptr<dwarf::spec::subprogram_die> p_subp
+    std::shared_ptr<dwarf::spec::subprogram_die> p_subp
      = me.find_subprogram_for_ip(ip);    
     if (p_subp) std::cout << "Found a subprogram: " << *p_subp << std::endl;
     else std::cout << "Didn't find a subprogram." << std::endl;
      
-    boost::shared_ptr<dwarf::spec::with_runtime_location_die> p_most
+    std::shared_ptr<dwarf::spec::with_runtime_location_die> p_most
      = me.find_most_specific_die_for_addr(ip);
     if (p_most) std::cout << "Found a most specific: " << *p_most << std::endl;
     else std::cout << "Didn't find a most specific." << std::endl;

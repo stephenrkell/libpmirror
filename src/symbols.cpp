@@ -16,7 +16,7 @@ using std::pair;
 using std::make_pair;
 
 using boost::dynamic_pointer_cast;
-using boost::shared_ptr;
+using std::shared_ptr;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;

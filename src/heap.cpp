@@ -32,7 +32,7 @@ using std::pair;
 using std::make_pair;
 
 using boost::dynamic_pointer_cast;
-using boost::shared_ptr;
+using std::shared_ptr;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
@@ -41,17 +41,17 @@ using dwarf::spec::variable_die;
 using dwarf::spec::with_static_location_die;
 using dwarf::spec::compile_unit_die;
 
-boost::shared_ptr<dwarf::spec::basic_die> 
+std::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object(addr_t heap_loc,
-	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+	std::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
 	addr_t *out_object_start_addr)
 {
 	// look for an informed object with equal or lower starting address
 	auto upper_bound = informed_heap_descrs.upper_bound(heap_loc);
 	auto greatest_le = srk31::greatest_le_from_upper_bound(
 		informed_heap_descrs.begin(), informed_heap_descrs.end(), upper_bound,
-		// const long unsigned int&, std::pair<const long unsigned int, boost::shared_ptr<dwarf::spec::type_die>
-		make_pair(heap_loc, boost::shared_ptr<dwarf::spec::type_die>()), 
+		// const long unsigned int&, std::pair<const long unsigned int, std::shared_ptr<dwarf::spec::type_die>
+		make_pair(heap_loc, std::shared_ptr<dwarf::spec::type_die>()), 
 		informed_heap_descrs.value_comp());
 	if (greatest_le != informed_heap_descrs.end()
 		&& greatest_le->second
@@ -240,9 +240,9 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 	else return 0;
 }
 
-boost::shared_ptr<dwarf::spec::basic_die> 
+std::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object_local(addr_t heap_loc,
-	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+	std::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
 	addr_t *out_object_start_addr)
 {
 	addr_t tmp_object_start_addr; 
@@ -349,9 +349,9 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 	
 }
 
-boost::shared_ptr<dwarf::spec::basic_die> 
+std::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object_remote(addr_t heap_loc,
-	boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+	std::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
 	addr_t *out_object_start_addr)
 {
 	assert(false);
@@ -369,7 +369,7 @@ process_image::discover_heap_object_remote(addr_t heap_loc,
 }
 void process_image::inform_heap_object_descr(
 	addr_t addr,
-	boost::shared_ptr<dwarf::spec::type_die> descr)
+	std::shared_ptr<dwarf::spec::type_die> descr)
 {
 	/* Here we let the user tell us the DWARF type of a heap object,
 	 * such that later calls will discover this information. */

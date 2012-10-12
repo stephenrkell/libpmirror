@@ -1,11 +1,10 @@
 include ../Makerules.common
 
-#libpmirror.so \
-#librtti.so \
-#libreflect.so \
-
 default: \
 libpmirror.a \
+libpmirror.so \
+librtti.so \
+libreflect.so \
 libheap_index_hooks.so \
 libheap_index_fast_hooks.so \
 libheap_index_preload_hooks.so \
@@ -23,7 +22,7 @@ CPP_SRC := process.cpp stack.cpp heap.cpp static.cpp discover.cpp symbols.cpp ma
 CC_OBJS := self-image.o
 CPP_OBJS := $(patsubst %.cpp,%.o,$(CPP_SRC))
 
-C_SRC := heap_index_hooks.c
+C_SRC := heap_index_hooks.c addrmap.c
 
 CC_DEPS := $(patsubst %.cc,.%.d,$(CC_SRC))
 CPP_DEPS := $(patsubst %.cpp,.%.d,$(CPP_SRC))
@@ -101,11 +100,12 @@ libheap_index_fast_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c
 # *also* a user-defined amount of padding (to be defined by a separate structure)?
 # But this has to be available early enough that the very first mallocs get it.
 # UNLESS we store the padding size in the trailer! This sounds good.
-libpmirror.so: $(CPP_OBJS) | libheap_index_fast_hooks.so 
-	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ $(LIBDL_LDLIBS) -L. -Wl,-R$$(pwd) $(UNWIND_LDLIBS) 
+libpmirror.so: $(CPP_OBJS) addrmap.o | libheap_index_fast_hooks.so 
+	g++ $(LDFLAGS) -shared -o "$@" $+ -ldwarfpp -lboost_regex -lc++fileno -lelf -lsrk31c++ $(LIBDL_LDLIBS) -L. -Wl,-R$$(pwd) 
+# $(UNWIND_LDLIBS) 
 #-lheap_index_fast_hooks #-ldwarf 
 
-libpmirror.a: $(CPP_OBJS)
+libpmirror.a: $(CPP_OBJS) addrmap.o
 	ar r "$@" $^
 
 heap_index_hooks_with_type.o: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 

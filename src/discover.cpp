@@ -14,7 +14,7 @@ using std::pair;
 using std::make_pair;
 
 using boost::dynamic_pointer_cast;
-using boost::shared_ptr;
+using std::shared_ptr;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
@@ -30,9 +30,9 @@ using dwarf::spec::compile_unit_die;
  * generic object discovery stuff based on memory kind. */
  
 /* Discover a DWARF type for an arbitrary object in the program address space. */
-boost::shared_ptr<spec::basic_die> 
+std::shared_ptr<spec::basic_die> 
 process_image::discover_object_descr(addr_t addr, 
-	boost::shared_ptr<spec::type_die> imprecise_static_type /* = null ptr */,
+	std::shared_ptr<spec::type_die> imprecise_static_type /* = null ptr */,
 	addr_t *out_object_start_addr /* = 0 */)
 {
 	cerr << "discover_object_descr: End of data segment is 0x" 
@@ -40,8 +40,10 @@ process_image::discover_object_descr(addr_t addr,
 	cerr << "discover_object_descr: End of initialised data segment is 0x" 
 		<< std::hex << ::edata << std::dec << endl;
 	cerr << "discover_object_descr: Program break is " << sbrk(0) << endl;
+#ifdef USE_STARTUP_BRK
 	cerr << "discover_object_descr: Program break at startup was 0x" 
 		<< std::hex << startup_brk << std::dec << endl;
+#endif
 	auto kind = discover_object_memory_kind(addr);
 	cerr << "Memory kind for 0x" << std::hex << addr << std::dec
 		<< " identified as " << name_for_memory_kind(kind) << endl;
@@ -102,20 +104,22 @@ process_image::discover_object_descr(addr_t addr,
 			goto discovery_failed;
 	} // end switch
 discovery_failed:
-	return boost::shared_ptr<spec::basic_die>();
+	return std::shared_ptr<spec::basic_die>();
 }
 
-boost::shared_ptr<spec::compile_unit_die> 
+std::shared_ptr<spec::compile_unit_die> 
 process_image::discover_allocating_cu_for_object(addr_t addr, 
-	boost::shared_ptr<spec::type_die> imprecise_static_type /* = null ptr */)
+	std::shared_ptr<spec::type_die> imprecise_static_type /* = null ptr */)
 {
 	cerr << "discover_allocating_cu_for_object: End of data segment is 0x" 
 		<< std::hex << ::end << std::dec << endl;
 	cerr << "discover_allocating_cu_for_object: End of initialised data segment is 0x" 
 		<< std::hex << ::edata << std::dec << endl;
 	cerr << "discover_allocating_cu_for_object: Program break is " << sbrk(0) << endl;
+#ifdef USE_STARTUP_BRK
 	cerr << "discover_allocating_cu_for_object: Program break at startup was 0x" 
 		<< std::hex << startup_brk << std::dec << endl;
+#endif
 	auto kind = discover_object_memory_kind(addr);
 	cerr << "Memory kind for 0x" << std::hex << addr << std::dec
 		<< " identified as " << name_for_memory_kind(kind) << endl;
@@ -174,7 +178,7 @@ process_image::discover_allocating_cu_for_object(addr_t addr,
 			goto discovery_failed;
 	} // end switch
 discovery_failed:
-	return boost::shared_ptr<spec::compile_unit_die>();
+	return std::shared_ptr<spec::compile_unit_die>();
 }
 
 const char *process_image::name_for_memory_kind(int k) // relaxation for ltrace++

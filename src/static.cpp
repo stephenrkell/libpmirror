@@ -26,7 +26,7 @@ using std::pair;
 using std::make_pair;
 
 using boost::dynamic_pointer_cast;
-using boost::shared_ptr;
+using std::shared_ptr;
 
 using dwarf::spec::abstract_dieset;
 using dwarf::spec::basic_die;
@@ -575,10 +575,10 @@ process_image::find_containing_die_for_dieset_relative_addr(
  * specialised in their layout. Could they be stack-alloc'd? I guess so,
  * although you'd better hope that the C code which allocated them won't
  * be accessing them any more. */
-boost::shared_ptr<spec::with_static_location_die> 
+std::shared_ptr<spec::with_static_location_die> 
 process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
 {
-	boost::shared_ptr<dwarf::spec::basic_die> most_specific
+	std::shared_ptr<dwarf::spec::basic_die> most_specific
 	 = dynamic_pointer_cast<dwarf::spec::basic_die>(
 	 	this->find_most_specific_die_for_absolute_addr(addr));
 
@@ -597,7 +597,7 @@ process_image::discover_object(addr_t addr, addr_t *out_object_start_addr)
 			{
 				// failed!
 				cerr << "Static object discovery failed for " << (void*)addr << endl;
-				return boost::shared_ptr<spec::with_static_location_die>();
+				return std::shared_ptr<spec::with_static_location_die>();
 			}
 		}
 	}

@@ -106,19 +106,19 @@ process_image::update_master_type_containment()
 }
 
 bool
-process_image::type_equivalence(boost::shared_ptr<dwarf::spec::type_die> t1,
-		boost::shared_ptr<dwarf::spec::type_die> t2)
+process_image::type_equivalence(std::shared_ptr<dwarf::spec::type_die> t1,
+		std::shared_ptr<dwarf::spec::type_die> t2)
 {
 	return t1->opt_ident_path_from_cu() == t2->opt_ident_path_from_cu()
 		&& t1->is_rep_compatible(t2) && t2->is_rep_compatible(t1);
 }
-boost::shared_ptr<dwarf::spec::basic_die> 
+std::shared_ptr<dwarf::spec::basic_die> 
 process_image::discover_heap_object(addr_t heap_loc,
-    boost::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
+    std::shared_ptr<dwarf::spec::type_die> imprecise_static_type,
     addr_t *out_object_start_addr)
 {
     static bool warned = false;
-	using boost::shared_ptr;
+	using std::shared_ptr;
 	using dwarf::lib::Dwarf_Unsigned;
 	using dwarf::lib::Dwarf_Off;
     
@@ -192,7 +192,7 @@ process_image::discover_heap_object(addr_t heap_loc,
 				 * (for strings that are embedded in the AST) some
 				 * time before we try to do the discovery thing on them. */
 				assert(imprecise_static_type);
-				std::vector<boost::shared_ptr<dwarf::spec::type_die> > candidates;
+				std::vector<std::shared_ptr<dwarf::spec::type_die> > candidates;
 
 				/* We need the reachability in the master containment
 				 * relation, because we want to handle indirect containment.

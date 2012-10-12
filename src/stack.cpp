@@ -22,7 +22,7 @@ using std::pair;
 using std::make_pair;
 
 using boost::dynamic_pointer_cast;
-using boost::shared_ptr;
+using std::shared_ptr;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
@@ -131,7 +131,7 @@ int unw_step(unw_cursor_t *cp)
 
 namespace pmirror {
 
-boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
+std::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object(
 	addr_t addr, 
 	addr_t *out_object_start_addr,
@@ -153,7 +153,7 @@ process_image::discover_stack_object(
     }
 }
 
-boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
+std::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object_local(
 	addr_t addr, 
 	addr_t *out_object_start_addr,
@@ -162,7 +162,7 @@ process_image::discover_stack_object_local(
 )
 {
 	stack_object_discovery_handler_arg arg
-     = {addr, boost::shared_ptr<dwarf::spec::with_dynamic_location_die>(), 0, 0, 0};
+     = {addr, std::shared_ptr<dwarf::spec::with_dynamic_location_die>(), 0, 0, 0};
 	walk_stack(NULL, stack_object_discovery_handler, &arg);
     // forward output arguments
     if (out_object_start_addr) *out_object_start_addr = arg.object_start_addr;
@@ -407,7 +407,7 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 
         assert(step_ret > 0 || higherframe_sp == BEGINNING_OF_STACK);
     } while (ret == 0 && higherframe_sp != BEGINNING_OF_STACK);
-    return ret; //boost::shared_ptr<dwarf::spec::basic_die>();
+    return ret; //std::shared_ptr<dwarf::spec::basic_die>();
 #undef BEGINNING_OF_STACK
 }
 
@@ -417,7 +417,7 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 // };
 // 
 // static
-// bool find_subprogram_pred(boost::shared_ptr<spec::basic_die> p_d, void *pred_arg)
+// bool find_subprogram_pred(std::shared_ptr<spec::basic_die> p_d, void *pred_arg)
 // {
 // 	return
 //     	p_d->get_tag() == DW_TAG_subprogram
@@ -425,7 +425,7 @@ int process_image::walk_stack(void *stack_handle, stack_frame_cb_t handler, void
 //     &&  boost::dynamic_pointer_cast<spec::subprogram_die>(p_d)->get_high_pc()
 // }
 
-boost::shared_ptr<dwarf::spec::with_dynamic_location_die>
+std::shared_ptr<dwarf::spec::with_dynamic_location_die>
 process_image::discover_stack_object_remote(
 	addr_t addr, 
 	addr_t *out_object_start_addr,
@@ -435,7 +435,7 @@ process_image::discover_stack_object_remote(
 {
 	assert(false);
 	cerr << "Stack object discovery failed for " << (void*)addr << endl;
-	return boost::shared_ptr<dwarf::spec::with_dynamic_location_die>();
+	return std::shared_ptr<dwarf::spec::with_dynamic_location_die>();
 }
 
 } // end namespace pmirror

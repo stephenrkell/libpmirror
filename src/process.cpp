@@ -40,7 +40,7 @@ using std::pair;
 using std::make_pair;
 
 using boost::dynamic_pointer_cast;
-using boost::shared_ptr;
+using std::shared_ptr;
 
 using dwarf::spec::basic_die;
 using dwarf::spec::subprogram_die;
@@ -88,14 +88,14 @@ process_image::process_image(pid_t pid /* = -1 */)
 
 /* Utility function: search multiple diesets for the first 
  * DIE matching a predicate. */
-boost::shared_ptr<spec::basic_die> resolve_first(
+std::shared_ptr<spec::basic_die> resolve_first(
     std::vector<string> path,
-    std::vector<boost::shared_ptr<spec::with_named_children_die > > starting_points,
+    std::vector<std::shared_ptr<spec::with_named_children_die > > starting_points,
     bool(*pred)(spec::basic_die&) /*=0*/)
 {
 	for (auto i_start = starting_points.begin(); i_start != starting_points.end(); ++i_start)
     {
-    	std::vector<boost::shared_ptr<spec::basic_die> > results;
+    	std::vector<std::shared_ptr<spec::basic_die> > results;
         (*i_start)->scoped_resolve_all(path.begin(), path.end(), results);
         for (auto i_result = results.begin(); i_result != results.end(); ++i_result)
         {
@@ -104,12 +104,12 @@ boost::shared_ptr<spec::basic_die> resolve_first(
         	if (!pred || pred(**i_result)) return *i_result;
 		}
     }
-	return boost::shared_ptr<spec::basic_die>();
+	return std::shared_ptr<spec::basic_die>();
 }
 
-boost::shared_ptr<dwarf::spec::basic_die> 
+std::shared_ptr<dwarf::spec::basic_die> 
 process_image::find_first_matching(
-		bool(*pred)(boost::shared_ptr<dwarf::spec::basic_die>, void *pred_arg),
+		bool(*pred)(std::shared_ptr<dwarf::spec::basic_die>, void *pred_arg),
 		void *pred_arg)
 {
 	for (auto i_file = files.begin(); i_file != files.end(); ++i_file)
@@ -130,7 +130,7 @@ process_image::find_first_matching(
 
 process_image::addr_t 
 process_image::get_object_from_die(
-  boost::shared_ptr<spec::with_static_location_die> p_d, 
+  std::shared_ptr<spec::with_static_location_die> p_d, 
   lib::Dwarf_Addr vaddr)
 {
 	/* From a DIE, return the address of the object it denotes. 

@@ -44,8 +44,8 @@ private:
 	void update_master_type_containment();
 	void update_master_type_equivalence();
 	
-	virtual bool type_equivalence(boost::shared_ptr<dwarf::spec::type_die> t1,
-		boost::shared_ptr<dwarf::spec::type_die> t2);
+	virtual bool type_equivalence(std::shared_ptr<dwarf::spec::type_die> t1,
+		std::shared_ptr<dwarf::spec::type_die> t2);
 	
 	void write_type_containment_relation(
 		std::multimap<lib::Dwarf_Off, lib::Dwarf_Off>& out_mm,

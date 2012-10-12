@@ -5,7 +5,7 @@
 #include <cassert>
 
 using namespace pmirror;
-using boost::shared_ptr;
+using std::shared_ptr;
 using boost::dynamic_pointer_cast;
 using boost::optional;
 using std::set;
