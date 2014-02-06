@@ -258,85 +258,59 @@ process_image::root_die_with_static_index::root_die_with_static_index(
 	{
 		Dwarf_Off off = i.offset_here();
 		if (i.tag_here() == DW_TAG_variable
-			&& i.has_attribute_here(DW_AT_location))
+		 && i.as_a<variable_die>()->has_static_storage())
 		{
-			/* DWARF doesn't tell us whether a variable is static or not. 
-			 * We want to rule out non-static variables. To do this, we
-			 * rely on our existing lib:: infrastructure. */
-			core::Attribute a(i.get_handle(), DW_AT_location);
-			encap::attribute_value val(a, i.get_handle(), i.spec_here());
-			auto loclist = val.get_loclist();
-			bool reads_register = false;
-			for (auto i_loc_expr = loclist.begin(); 
-				i_loc_expr != loclist.end(); 
-				++i_loc_expr)
+			auto name = i.name_here();
+			cerr << "Found a static or global variable named "
+				<< (name ? name.get() : "(no name)") << endl;
+			static_vars.insert(off);
+
+			/* To get the address range, we use the adt code for now. This is not so
+			 * bad for performance because we only heap allocate for the DIEs we've
+			 * already identified as static variables. */
+			assert(p_ds);
+			auto found = (*p_ds)[off];
+			assert(found);
+			auto with_static_location
+			 = dynamic_pointer_cast<spec::with_static_location_die>(found);
+			if (!with_static_location)
 			{
-				for (auto i_instr = i_loc_expr->begin(); 
-					i_instr != i_loc_expr->end();
-					++i_instr)
-				{
-					if (spec::DEFAULT_DWARF_SPEC.op_reads_register(i_instr->lr_atom))
-					{
-						reads_register = true;
-						break;
-					}
-				}
-				if (reads_register) break;
+				cerr << "Warning: expected a with_static_location_die, got " 
+					<< found->summary() << endl;
+				continue;
 			}
-			if (!reads_register)
+			try
 			{
-				auto name = i.name_here();
-				cerr << "Found a static or global variable named "
-					<< (name.get() ? name.get() : "(no name)") << endl;
-				static_vars.insert(off);
-				
-				/* To get the address range, we use the adt code for now. This is not so
-				 * bad for performance because we only heap allocate for the DIEs we've
-				 * already identified as static variables. */
-				assert(p_ds);
-				auto found = (*p_ds)[off];
-				assert(found);
-				auto with_static_location
-				 = dynamic_pointer_cast<spec::with_static_location_die>(found);
-				if (!with_static_location)
+				boost::icl::interval_map<Dwarf_Addr, Dwarf_Unsigned> out
+				 = with_static_location->file_relative_intervals(nullptr, nullptr);
+				if (out.size() > 1)
 				{
-					cerr << "Warning: expected a with_static_location_die, got " 
-						<< found->summary() << endl;
+					cerr << "Warning: expected a single interval, got " << out.size()
+						<< " of them." << endl;
 					continue;
 				}
-				try
-				{
-					boost::icl::interval_map<Dwarf_Addr, Dwarf_Unsigned> out
-					 = with_static_location->file_relative_intervals(nullptr, nullptr);
-					if (out.size() > 1)
-					{
-						cerr << "Warning: expected a single interval, got " << out.size()
-							<< " of them." << endl;
-						continue;
-					}
-					addr_lookup.insert(make_pair(
-						out.begin()->first.lower(),
-						make_pair(
-							off,
-							out.begin()->first.upper() - out.begin()->first.lower()
-						)
-					));
-					cerr << "addr_lookup now has " << addr_lookup.size() << " entries." << endl;
-				}
-				catch (dwarf::lib::Not_supported)
-				{
-					cerr << "Warning: couldn't evaluate location of DIE at 0x"
-						<< std::hex << off << std::dec << endl;
-					continue;
-				}
+				addr_lookup.insert(make_pair(
+					out.begin()->first.lower(),
+					make_pair(
+						off,
+						out.begin()->first.upper() - out.begin()->first.lower()
+					)
+				));
+				cerr << "addr_lookup now has " << addr_lookup.size() << " entries." << endl;
 			}
-			else
+			catch (dwarf::lib::Not_supported)
 			{
-				//auto name = i.name_here();
-				//cerr << "Found a local variable named "
-				//	<< (name.get() ? name.get() : "(no name)") << endl;
+				cerr << "Warning: couldn't evaluate location of DIE at 0x"
+					<< std::hex << off << std::dec << endl;
+				continue;
 			}
-		} 
+		}
+		else
+		{
+			//auto name = i.name_here();
+			//cerr << "Found a local variable named "
+			//	<< (name.get() ? name.get() : "(no name)") << endl;
+		}
 	}
 
 }
