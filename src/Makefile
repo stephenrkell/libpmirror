@@ -6,6 +6,7 @@ libpmirror.so \
 librtti.so \
 libreflect.so \
 libheap_index_hooks.so \
+libheap_index_fast_hooks.a \
 libheap_index_fast_hooks.so \
 libheap_index_preload_hooks.so \
 libheap_index_preload_fast_hooks.so \
