@@ -38,6 +38,8 @@ $(CC_DEPS): .%.d : %.cc
 $(C_DEPS): .%.d : %.c
 	$(CC) -MM $(CFLAGS) "$<"  > "$@"
 
+CFLAGS += -DTRACE_MALLOC_HOOKS # -DTRACE_HEAP_INDEX
+
 -include $(DEPS)
 
 ifeq ($(NO_LIBUNWIND),yes)

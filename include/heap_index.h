@@ -22,12 +22,12 @@ extern struct entry *index_region __attribute__((weak));
 #else
 #define ADDR_BITSIZE WORD_BITSIZE
 #endif
-struct trailer
+struct header
 {
 	unsigned alloc_site_flag:1;
 	unsigned long alloc_site:(ADDR_BITSIZE-1);
-#ifdef HEAP_INDEX_TRAILER_INCLUDE
-#include HEAP_INDEX_TRAILER_INCLUDE
+#ifdef HEAP_INDEX_HEADER_INCLUDE
+#include HEAP_INDEX_HEADER_INCLUDE
 #endif
 	struct entry next;
 	struct entry prev;
@@ -35,7 +35,7 @@ struct trailer
 } __attribute__((packed));
 
 
-struct trailer *lookup_object_info(const void *mem, void **out_object_start) __attribute__((weak));
+struct header *lookup_object_info(const void *mem, void **out_object_start) __attribute__((weak));
 
 /* A thread-local variable to override the "caller" arguments. 
  * Platforms without TLS have to do without this feature. */

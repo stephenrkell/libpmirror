@@ -95,30 +95,11 @@ process_image::discover_heap_object(addr_t heap_loc,
  * we also index the table by the object size. BUT there's a complication:
  * dlmalloc (and other mallocs) don't remember the precise object size,
  * just the size after padding for the allocator's alignment (e.g. 2 words).
- * We increment by our trailer size before this padding happens. Then this
+ * We increment by our header size before this padding happens. Then this
  * incremented size is what's padded. 
  *  */
 
-/* Do I want to pad to 4, 8 or (=== 4 (mod 8)) bytes? 
- * Try 4 mod 8. */
-#define PAD_TO_NBYTES(s, n) (((s) % (n) == 0) ? (s) : ((((s) / (n)) + 1) * (n)))
-#define PAD_TO_MBYTES_MOD_N(s, n, m) (((s) % (n) <= (m)) \
-? ((((s) / (n)) * (n)) + (m)) \
-: (((((s) / (n)) + 1) * (n)) + (m)))
-// (((s) % (n) <= (m)) ? ((((s) / (n)) * (n)) + (m)) : (((((s) / (n)) + 1) * (n)) + (m)))
-#define USABLE_SIZE_FROM_OBJECT_SIZE(s) (PAD_TO_MBYTES_MOD_N( ((s) + sizeof (struct trailer)) , 8, 4))
-#define HEAPSZ_ONE(t) (USABLE_SIZE_FROM_OBJECT_SIZE(sizeof ((t))))
-
 static map<pair<string, size_t>, vector<string> > allocsite_typenames = {
-	{ { "_puffs_init", /*1102*/ USABLE_SIZE_FROM_OBJECT_SIZE(1100) }, (vector<string>){ "puffs_usermount" } },
-	{ { "_puffs_init", /*3382*/ USABLE_SIZE_FROM_OBJECT_SIZE(3380) }, (vector<string>){ "puffs_kargs" } },
-	{ { "puffs_framebuf_make", 120 /*USABLE_SIZE_FROM_OBJECT_SIZE(44? 114?)*/ }, (vector<string>){ "puffs_cred" } },
-	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(528) }, (vector<string>){ "dirent" } }, 
-	{ { "kmem_zalloc", USABLE_SIZE_FROM_OBJECT_SIZE(2320) }, (vector<string>){ "mount" } }, 
-	{ { "kmem_alloc", USABLE_SIZE_FROM_OBJECT_SIZE(2836) }, (vector<string>){ "tmpfs_mount" } }, 
-	{ { "pool_cache_get_paddr", 196 }, (vector<string>){ "vnode" } }, // HACK
-	{ { "pool_cache_get_paddr", 172 }, (vector<string>){ "kauth_cred" } }, // HACK
-	{ { "makefooblahfunc", 42 }, (vector<string>){ "foo", "blah" } }
 };
 
 process_image::addr_t
@@ -130,7 +111,7 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 {
 	/* Get the allocation site from the memtable. */
 	assert(index_region);
-	struct trailer *ret = lookup_object_info(
+	struct header *ret = lookup_object_info(
 		(const void *)heap_loc, 
 		(void **) out_object_start_addr
 	);
@@ -141,7 +122,7 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 	}
 	void *alloc_site = (void *) ret->alloc_site;
 	size_t usable_size = malloc_usable_size(reinterpret_cast<void*>(heap_loc));
-	size_t padded_object_size = usable_size - sizeof (struct trailer);
+	size_t padded_object_size = usable_size - sizeof (struct header);
 	cerr << "Considering object at " << (void*)heap_loc << endl;
 	cerr << "Usable size is " << usable_size << " bytes." << endl;
 	cerr << "Padded object size is " << padded_object_size << " bytes." << endl;
@@ -327,21 +308,7 @@ process_image::discover_heap_object_local(addr_t heap_loc,
 
 		if (opt_sz)
 		{
-			auto expected_usable_size = USABLE_SIZE_FROM_OBJECT_SIZE(*opt_sz);
-			cerr << "One instance of this, with trailer and padding, comes to " 
-				<< expected_usable_size << " bytes." << endl;
-			if (expected_usable_size == usable_size) 
-			{
-				cerr << "Sizes match, so going with the caller-supplied type." << endl;
-				return imprecise_static_type;
-			}
-			else
-			{
-				// FIXME!
-				cerr << "WARNING: sizes don't match, but going with caller-supplied anyway."
-					<< endl;
-				return imprecise_static_type;
-			}
+			return imprecise_static_type;
 		}
 	}
 
@@ -358,7 +325,7 @@ process_image::discover_heap_object_remote(addr_t heap_loc,
 	/* How to do remote access to a memtable:
 	 *
 	 * - in memtable.h, typedef-ify the pointers that we use 
-	 *   to access the table and trailers
+	 *   to access the table and headers
 	 * - make memtable.h multiple-inclusion-safe (i.e. includes nothing itself, #undefs stuff)
 	 * - include memtable.h a second time but with different #defines
 	 *   and in a different C++ namespace...
