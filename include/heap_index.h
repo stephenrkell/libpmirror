@@ -22,7 +22,7 @@ extern struct entry *index_region __attribute__((weak));
 #else
 #define ADDR_BITSIZE WORD_BITSIZE
 #endif
-struct header
+struct insert
 {
 	unsigned alloc_site_flag:1;
 	unsigned long alloc_site:(ADDR_BITSIZE-1);
@@ -35,7 +35,7 @@ struct header
 } __attribute__((packed));
 
 
-struct header *lookup_object_info(const void *mem, void **out_object_start) __attribute__((weak));
+struct insert *lookup_object_info(const void *mem, void **out_object_start) __attribute__((weak));
 
 /* A thread-local variable to override the "caller" arguments. 
  * Platforms without TLS have to do without this feature. */

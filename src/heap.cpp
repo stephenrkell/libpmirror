@@ -95,7 +95,7 @@ process_image::discover_heap_object(addr_t heap_loc,
  * we also index the table by the object size. BUT there's a complication:
  * dlmalloc (and other mallocs) don't remember the precise object size,
  * just the size after padding for the allocator's alignment (e.g. 2 words).
- * We increment by our header size before this padding happens. Then this
+ * We increment by our insert size before this padding happens. Then this
  * incremented size is what's padded. 
  *  */
 
@@ -111,7 +111,7 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 {
 	/* Get the allocation site from the memtable. */
 	assert(index_region);
-	struct header *ret = lookup_object_info(
+	struct insert *ret = lookup_object_info(
 		(const void *)heap_loc, 
 		(void **) out_object_start_addr
 	);
@@ -122,7 +122,7 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 	}
 	void *alloc_site = (void *) ret->alloc_site;
 	size_t usable_size = malloc_usable_size(reinterpret_cast<void*>(heap_loc));
-	size_t padded_object_size = usable_size - sizeof (struct header);
+	size_t padded_object_size = usable_size - sizeof (struct insert);
 	cerr << "Considering object at " << (void*)heap_loc << endl;
 	cerr << "Usable size is " << usable_size << " bytes." << endl;
 	cerr << "Padded object size is " << padded_object_size << " bytes." << endl;

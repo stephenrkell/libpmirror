@@ -33,13 +33,13 @@ ostream& process_image::print_object(ostream& s, void *obj) const
 		{
 			void *obj_start;
 			assert(index_region);
-			struct header *tr = lookup_object_info(obj, &obj_start);
+			struct insert *tr = lookup_object_info(obj, &obj_start);
 			assert(tr);
 			s << "pointer " << obj << " into object starting at " << obj_start
 #ifndef NO_MALLOC_USABLE_SIZE
 				<< " size " << malloc_usable_size(obj_start) 
 #endif
-				<< ", allocated at " << (void*)tr->alloc_site;
+				<< ", allocated at " << (void*)(uintptr_t)tr->alloc_site;
 			return s;
 		}
 		case memory_kind::STATIC:
