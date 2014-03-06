@@ -5,6 +5,7 @@ libpmirror.a \
 libpmirror.so \
 librtti.so \
 libreflect.so \
+libheap_index_hooks.a \
 libheap_index_hooks.so \
 libheap_index_fast_hooks.a \
 libheap_index_fast_hooks.so \
@@ -38,7 +39,7 @@ $(CC_DEPS): .%.d : %.cc
 $(C_DEPS): .%.d : %.c
 	$(CC) -MM $(CFLAGS) "$<"  > "$@"
 
-CFLAGS += -DTRACE_MALLOC_HOOKS -DTRACE_HEAP_INDEX
+NON_FAST_CFLAGS += -DTRACE_MALLOC_HOOKS -DTRACE_HEAP_INDEX
 
 -include $(DEPS)
 
@@ -89,14 +90,18 @@ libheap_index_wrap_hooks.a: libheap_index_wrap_hooks.o toplevel_init.o static_li
 # "old" hooks build rules
 # First include the rules without the fancy CFLAGS.
 # Then builds a lean, mean set of hooks libraries.
-libheap_index_hooks.so: heap_index_hooks.c $(MALLOC_HOOKS)/malloc_hooks.c 
-	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) "$<"
+libheap_index_hooks.so: heap_index_hooks.c #$(MALLOC_HOOKS)/malloc_hooks.c 
+	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) $(NON_FAST_CFLAGS) "$<"
+libheap_index_hooks.a: heap_index_hooks.c
+	gcc $(LDFLAGS) -c $(CFLAGS) $(NON_FAST_CFLAGS) -I$(MALLOC_HOOKS) "$<"
+	ar r "$@" heap_index_hooks.o #malloc_hooks.o
+
 libheap_index_fast_hooks.so: heap_index_hooks.c #$(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fpic -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) "$<"
 
 #vpath $(MALLOC_HOOKS)/malloc_hooks.c 
 libheap_index_fast_hooks.a: heap_index_hooks.c #malloc_hooks.c 
-	gcc $(LDFLAGS) -shared -c -DNDEBUG=1 -O3 -std=gnu99 -fpic -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) $^
+	gcc $(LDFLAGS) -c -DNDEBUG=1 -O3 -std=gnu99 -fpic -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) $^
 	ar r "$@" heap_index_hooks.o #malloc_hooks.o
 	#rm -f malloc_hooks.o # HACK
 

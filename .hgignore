@@ -4,3 +4,4 @@ syntax: regexp
 .*\.a$
 .*\.so$
 (^|/)makefile$
+^tests/heap-index/multi-level$

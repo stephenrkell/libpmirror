@@ -113,7 +113,8 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 	assert(index_region);
 	struct insert *ret = lookup_object_info(
 		(const void *)heap_loc, 
-		(void **) out_object_start_addr
+		(void **) out_object_start_addr,
+		NULL // FIXME: get chunk size
 	);
 	if (!ret) 
 	{
