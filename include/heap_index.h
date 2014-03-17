@@ -32,6 +32,11 @@ int safe_to_call_malloc __attribute__((weak));
 #else
 #define ADDR_BITSIZE WORD_BITSIZE
 #endif
+struct ptrs 
+{
+	struct entry next;
+	struct entry prev;
+} __attribute__((packed));
 struct insert
 {
 	unsigned alloc_site_flag:1;
@@ -39,13 +44,9 @@ struct insert
 #ifdef HEAP_INDEX_HEADER_INCLUDE
 #include HEAP_INDEX_HEADER_INCLUDE
 #endif
-	union 
+	union  __attribute__((packed))
 	{
-		struct 
-		{
-			struct entry next;
-			struct entry prev;
-		} ptrs;
+		struct ptrs ptrs;
 		unsigned bits:16;
 	} un;
 
