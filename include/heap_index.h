@@ -97,6 +97,9 @@ struct deep_entry_region
 	int undersize_right_shift;
 	size_t half_size;
 	char deepest_level_minus_one;
+	unsigned biggest_index_displacement_from_natural;
+	unsigned biggest_object_in_4bytes_by_level_minus_one[1<<2]; // must match #bits in level_minus_one
+	unsigned biggest_object_in_4bytes_total;
 };
 
 /* We also use a set of coarser memtable-alikes to map deeper entries. 
@@ -108,7 +111,8 @@ struct deep_entry_region
  * HMM. That's not great... a 1-to-64 memtable. THEN we need another table to
  * hold the object info
  * */
-extern struct deep_entry_region deep_entry_regions[1u<<6]; // must match the bit size of "distance"!
+#define MAX_DEEP_ENTRY_REGIONS (1u<<6) /* must match the bit size of "distance"! */
+extern struct deep_entry_region deep_entry_regions[MAX_DEEP_ENTRY_REGIONS];
 
 int  __index_deep_alloc(void *ptr, int level, unsigned size_bytes) __attribute__((weak));
 void __unindex_deep_alloc(void *ptr, int level) __attribute__((weak));
