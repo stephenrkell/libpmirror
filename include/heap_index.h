@@ -142,12 +142,14 @@ extern __thread void *__current_allocsite;
 extern __thread void *__current_allocfn;
 extern __thread size_t __current_allocsz;
 extern __thread int __currently_freeing;
+extern __thread int __currently_allocating;
 #else
 #warning "Using thread-unsafe __current_allocsite variable."
 extern void *__current_allocsite;
 extern void *__current_allocfn;
 extern size_t __current_allocsz;
 extern int __currently_freeing;
+extern int __currently_allocating;
 #endif
 
 #endif
