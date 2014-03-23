@@ -111,9 +111,11 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 {
 	/* Get the allocation site from the memtable. */
 	assert(index_region);
+	size_t usable_size;
 	struct insert *ret = lookup_object_info(
 		(const void *)heap_loc, 
 		(void **) out_object_start_addr,
+		&usable_size,
 		NULL // FIXME: get chunk size
 	);
 	if (!ret) 
@@ -121,14 +123,14 @@ process_image::allocsite_for_heap_object_local(addr_t heap_loc,
 		cerr << "Could not locate metadata for heap object " << (void*)heap_loc << endl;
 		return 0;
 	}
-	void *alloc_site = (void *) ret->alloc_site;
-	size_t usable_size = malloc_usable_size(reinterpret_cast<void*>(heap_loc));
-	size_t padded_object_size = usable_size - sizeof (struct insert);
-	cerr << "Considering object at " << (void*)heap_loc << endl;
-	cerr << "Usable size is " << usable_size << " bytes." << endl;
-	cerr << "Padded object size is " << padded_object_size << " bytes." << endl;
+	void *alloc_site = (void *) (uintptr_t) ret->alloc_site;
+	//size_t usable_size = malloc_usable_size(reinterpret_cast<void*>(heap_loc));
+	//size_t padded_object_size = usable_size - sizeof (struct insert);
+	//cerr << "Considering object at " << (void*)heap_loc << endl;
+	//cerr << "Usable size is " << usable_size << " bytes." << endl;
+	//cerr << "Padded object size is " << padded_object_size << " bytes." << endl;
 	cerr << "Alloc site (bits) are " << alloc_site << endl;
-	if (usable_size >= 1UL<<29) // sizes >= 512MB are not sane
+	if (usable_size  >= 1UL<<29) // sizes >= 512MB are not sane
 	{
 		cerr << "Usable size is not sane: " << usable_size << endl;
 		return 0; // imprecise_static_type;
