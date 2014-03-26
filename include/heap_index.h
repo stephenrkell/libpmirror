@@ -14,9 +14,12 @@ struct entry
 #define IS_L0_ENTRY(e) (!(e)->present && (e)->removed && (e)->distance == 63)
 #define IS_EMPTY_ENTRY(e) (!(e)->present && !(e)->removed)
 
-#define MINIMUM_USER_ADDRESS  ((void*)0x400000) /* FIXME: less {x86-64,GNU/Linux}-specific please */
+#define MINIMUM_USER_ADDRESS  ((char*)0x400000) /* FIXME: less {x86-64,GNU/Linux}-specific please */
 #define MAX_SUBALLOCATED_CHUNKS ((unsigned long) MINIMUM_USER_ADDRESS)
-#define ALLOC_IS_SUBALLOCATED(ins) ((char*)((uintptr_t)(ins)->alloc_site) < (char*)MINIMUM_USER_ADDRESS)
+#define ALLOC_IS_SUBALLOCATED(ins) ((char*)((uintptr_t)(ins)->alloc_site) < MINIMUM_USER_ADDRESS)
+#define IS_CONTINUATION_REC(ins) ((char*)((uintptr_t)(ins)->alloc_site) < MINIMUM_USER_ADDRESS && (ins)->alloc_site_flag)
+#define MODULUS_OF_INSERT(ins) ((ins)->un.bits & 0xff)
+#define THISBUCKET_SIZE_OF_INSERT(ins) (((ins)->un.bits >> 8) == 0 ? 256 : ((ins)->un.bits >> 8))
 
 /* What's the most space that a malloc header will use? 
  * We use this figure to guess when an alloc has been satisfied with mmap().  
@@ -66,6 +69,7 @@ struct suballocated_chunk_rec
 	struct insert *metadata_recs;
 	char log_pitch;
 	size_t one_layer_nbytes;
+	unsigned long biggest_object;
 };
 int  __index_deep_alloc(void *ptr, int level, unsigned size_bytes) __attribute__((weak));
 void __unindex_deep_alloc(void *ptr, int level) __attribute__((weak));
