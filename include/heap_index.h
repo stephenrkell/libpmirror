@@ -1,6 +1,7 @@
 #ifndef __HEAP_INDEX_H
 #define __HEAP_INDEX_H
 
+#include <stdbool.h>
 #include "memtable.h"
 
 struct entry
@@ -9,14 +10,26 @@ struct entry
 	unsigned removed:1;  /* whether this link is in the "removed" state in Harris's algorithm */
 	unsigned distance:6; /* distance from the base of this entry's region, in 8-byte units */
 } __attribute__((packed));
+struct insert;
 
 #define IS_DEEP_ENTRY(e) (!(e)->present && (e)->removed && (e)->distance != 63)
 #define IS_L0_ENTRY(e) (!(e)->present && (e)->removed && (e)->distance == 63)
 #define IS_EMPTY_ENTRY(e) (!(e)->present && !(e)->removed)
 
+#define BIGGEST_SENSIBLE_OBJECT (256*1024*1024)
 #define MINIMUM_USER_ADDRESS  ((char*)0x400000) /* FIXME: less {x86-64,GNU/Linux}-specific please */
 #define MAX_SUBALLOCATED_CHUNKS ((unsigned long) MINIMUM_USER_ADDRESS)
-#define ALLOC_IS_SUBALLOCATED(ins) ((char*)((uintptr_t)(ins)->alloc_site) < MINIMUM_USER_ADDRESS)
+#define INSERT_DESCRIBES_OBJECT(ins) \
+	((char*)((uintptr_t)(ins)->alloc_site) >= MINIMUM_USER_ADDRESS)
+#define INSERT_IS_SUBALLOC_CHAIN(ins) \
+	(!(INSERT_DESCRIBES_OBJECT(ins)))
+/* For ALLOC_IS_SUBALLOCATED, we try to check that `ptr' and `ins' are 
+ * well-matched, i.e. ins is the physical l0 or l1 insert for the chunk
+ * overlapping ptr. This is easy in the l1 case, but hard in the l0 case
+ * since we don't implement the l0 index here. We have to call out to
+ * __lookup_l0 to test this. */
+static inline _Bool ALLOC_IS_SUBALLOCATED(const void *ptr, struct insert *ins);
+
 #define IS_CONTINUATION_REC(ins) ((char*)((uintptr_t)(ins)->alloc_site) < MINIMUM_USER_ADDRESS && (ins)->alloc_site_flag)
 #define MODULUS_OF_INSERT(ins) ((ins)->un.bits & 0xff)
 #define THISBUCKET_SIZE_OF_INSERT(ins) (((ins)->un.bits >> 8) == 0 ? 256 : ((ins)->un.bits >> 8))
@@ -79,15 +92,13 @@ struct insert *lookup_object_info(const void *mem, void **out_object_start, size
 void *__try_index_l0(const void *, size_t modified_size, const void *caller) __attribute__((weak));
 struct insert *__lookup_l0(const void *mem, void **out_object_start) __attribute__((weak));
 unsigned __unindex_l0(const void *mem) __attribute__((weak));
-
-struct alloc_req
+static inline _Bool ALLOC_IS_SUBALLOCATED(const void *ptr, struct insert *ins)
 {
-	void *call_site;
-	void *callee;
-	size_t size_requested;
-	void *ptr_returned;
-};
-#define MAX_ALLOC_REQS 16
+	bool is_l0 = __lookup_l0 && __lookup_l0(ptr, NULL) == ins;
+	bool is_sane_l01 = is_l0 || ((char*)(ins) - (char*)(ptr) >= 0
+			&& (char*)(ins) - (char*)(ptr) < BIGGEST_SENSIBLE_OBJECT);
+	return is_sane_l01 && ((char*)((uintptr_t)(ins)->alloc_site)) < MINIMUM_USER_ADDRESS;
+}
 
 /* A thread-local variable to override the "caller" arguments. 
  * Platforms without TLS have to do without this feature. */
