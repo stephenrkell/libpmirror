@@ -34,31 +34,12 @@ using dwarf::spec::compile_unit_die;
 #ifdef NO_LIBUNWIND
 /* We define some fake libunwind stuff here. */
 #include "fake-libunwind.h"
+#include "fake-libunwind.c"
 #include "libreflect.hpp"
-long local_addr_space;
-unw_addr_space_t unw_local_addr_space = &local_addr_space;
-struct accessors local_accessors = { &access_mem };
-
-int unw_get_reg(unw_cursor_t *cursor, enum x86_regnum_t reg, unw_word_t *dest)
-{
-	switch (reg)
-	{
-		case UNW_X86_ESP: *(void**)dest = (void*) cursor->frame_esp; return 0;
-		case UNW_X86_EBP: *(void**)dest = (void*) cursor->frame_ebp; return 0;
-		case UNW_X86_EIP: *(void**)dest = (void*) cursor->frame_eip; return 0;
-		default: return 1;
-	}
-}
-int unw_init_local(unw_cursor_t *cursor, unw_context_t *context)
-{
-	*cursor = *context;
-	return 0;
-}
-
 int unw_get_proc_name(unw_cursor_t *p_cursor, char *buf, size_t n, unw_word_t *offp)
 {
 	assert(!offp);
-	auto found = pmirror::self.find_subprogram_for_absolute_ip(p_cursor->frame_eip);
+	auto found = pmirror::self.find_subprogram_for_absolute_ip(p_cursor->frame_ip);
 	if (!found) return 1;
 	if (!found->get_name()) return 2;
 	else 
@@ -66,64 +47,6 @@ int unw_get_proc_name(unw_cursor_t *p_cursor, char *buf, size_t n, unw_word_t *o
 		string name = *found->get_name();
 		name.copy(buf, n);
 		return 0;
-	}
-}
-int unw_getcontext(unw_context_t *ucp)
-{
-	unw_word_t current_bp, caller_bp, caller_sp;
-	unw_word_t current_return_addr;
-	current_return_addr = (unw_word_t)
-		/*__builtin_extract_return_address( */
-			__builtin_return_address(0/*)*/
-		);
-	__asm__ ("movl %%ebp, %0\n" :"=r"(current_bp));
-	/* We get the old break pointer by dereferencing the addr found at 0(%ebp) */
-	caller_bp = (unw_word_t) *reinterpret_cast<void **>(current_bp);
-	/* We get the caller stack pointer by taking the addr, and adjusting for
-	 * the arguments & return addr to this function (two words). */
-	caller_sp = (unw_word_t) (reinterpret_cast<void **>(current_bp) + 2);
-	*ucp = (unw_context_t){ 
-		/* context sp = */ caller_sp, 
-		/* context bp = */ caller_bp, 
-		/* context ip = */ current_return_addr
-	};
-	return 0;
-}
-
-int unw_step(unw_cursor_t *cp)
-{
-	/*
-       On successful completion, unw_step() returns a positive  value  if  the
-       updated  cursor  refers  to  a  valid stack frame, or 0 if the previous
-       stack frame was the last frame in the chain.  On  error,  the  negative
-       value of one of the error-codes below is returned.
-	*/
-	
-	unw_context_t ctxt = *cp;
-	
-	// the next-higher ip is the return addr of the frame, i.e. 4(%eip)
-	void *return_addr = *(reinterpret_cast<void **>(ctxt.frame_ebp) + 1);
-	
-	unw_context_t new_ctxt = (unw_context_t) { 
-		/* context sp = */ (unw_word_t) (reinterpret_cast<void **>(ctxt.frame_ebp) + 2),
-		/* context bp = */ (unw_word_t) *reinterpret_cast<void **>(ctxt.frame_ebp),
-		/* context ip = */ (unw_word_t) return_addr
-	};
-		
-	// sanity check the results
-	if (new_ctxt.frame_esp >= BEGINNING_OF_STACK
-	||  new_ctxt.frame_esp <= end
-	||  new_ctxt.frame_ebp >= BEGINNING_OF_STACK
-	||  new_ctxt.frame_ebp <= end)
-	{
-		// looks dodgy -- say we failed
-		return -1;
-	}
-	// otherwise return the number of bytes we stepped up
-	else
-	{
-		*cp = new_ctxt;
-		return new_ctxt.frame_esp - ctxt.frame_esp;
 	}
 }
 
