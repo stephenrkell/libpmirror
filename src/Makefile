@@ -1,4 +1,21 @@
-include ../Makerules.common
+THIS_MAKEFILE := $(realpath $(lastword $(MAKEFILE_LIST)))
+SRCROOT := $(dir $(THIS_MAKEFILE))/..
+
+CFLAGS += -I$(SRCROOT)/include
+CFLAGS += -I$(MALLOC_HOOKS)
+CFLAGS += -std=gnu99 -fpic -g3 # need gnu99 for Linux-specific mmap() flags
+
+CXXFLAGS += -I../include/pmirror
+CXXFLAGS += -I../include
+#CXXFLAGS += -std=c++0x -g
+CXXFLAGS += -std=c++0x
+CXXFLAGS += -fPIC -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
+
+LDFLAGS += -L$(SRCROOT)/src -Wl,-R$(SRCROOT)/src -L$(SRCROOT)/lib -Wl,-R$(SRCROOT)/lib
+
+# get the architecture, with override for this stupid i386/i686 confusion
+UNWIND_ARCH := $(shell case $$(uname -m) in (i?86) echo x86;; (*) echo $$(uname -m);; esac)
+$(warning UNWIND_ARCH is $(UNWIND_ARCH))
 
 default: \
 libpmirror.a \
@@ -66,15 +83,16 @@ libreflect.a: self-image.o
 comma := ,
 libheap_index_preload_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
 	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
-	 -shared -g -fpic -o "$@" $(CFLAGS) "$<" \
+	 -shared -std=gnu99 -g -fpic -o "$@" $(CFLAGS) "$<" \
 	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
 	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
 	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \
 	$(MALLOC_HOOKS)/toplevel_init.c $(MALLOC_HOOKS)/dynamic_linker_glue.c \
 	$(MALLOC_HOOKS)/common_linker_glue.c $(MALLOC_HOOKS)/early_malloc.c 
 libheap_index_preload_fast_hooks.so: heap_index_hooks.c $(wildcard $(MALLOC_HOOKS)/*.c)
-	gcc $(LDFLAGS) -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
-	 -shared -g -fpic -o "$@" $(COMMON_CFLAGS) -O4 -DNDEBUG=1 "$<" \
+	gcc $(LDFLAGS) \
+	-I$(MALLOC_HOOKS) -I$(SRCROOT)/include -DMALLOC_HOOKS_INCLUDE="\"malloc_hooks_preload.c"\" \
+	 -shared -std=gnu99 -g -fpic -o "$@" $(COMMON_CFLAGS) -flto -O4 -DNDEBUG=1 "$<" \
 	$(patsubst %,-Wl$(comma)%,--defsym malloc=__wrap_malloc --defsym realloc=__wrap_realloc \
 	--defsym calloc=__wrap_calloc --defsym free=__wrap_free \
 	--defsym memalign=__wrap_memalign --defsym posix_memalign=__wrap_posix_memalign ) \
@@ -93,15 +111,17 @@ libheap_index_wrap_hooks.a: libheap_index_wrap_hooks.o toplevel_init.o static_li
 libheap_index_hooks.so: heap_index_hooks.c #$(MALLOC_HOOKS)/malloc_hooks.c 
 	gcc $(LDFLAGS) -shared -o "$@" $(CFLAGS) $(NON_FAST_CFLAGS) "$<"
 libheap_index_hooks.a: heap_index_hooks.c
-	gcc $(LDFLAGS) -c $(CFLAGS) $(NON_FAST_CFLAGS) -I$(MALLOC_HOOKS) "$<"
+	gcc $(LDFLAGS) -c $(CFLAGS) $(NON_FAST_CFLAGS) -I$(SRCROOT)/include -I$(MALLOC_HOOKS) "$<"
 	ar r "$@" heap_index_hooks.o #malloc_hooks.o
 
 libheap_index_fast_hooks.so: heap_index_hooks.c #$(MALLOC_HOOKS)/malloc_hooks.c 
-	gcc $(LDFLAGS) -shared -o "$@" -DNDEBUG=1 -O3 -std=gnu99 -fpic -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) "$<"
+	gcc $(LDFLAGS) -shared -o "$@" -DNDEBUG=1 -O3 -flto -std=gnu99 -fpic -g \
+	    -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) "$<"
 
 #vpath $(MALLOC_HOOKS)/malloc_hooks.c 
 libheap_index_fast_hooks.a: heap_index_hooks.c #malloc_hooks.c 
-	gcc $(LDFLAGS) -c -DNDEBUG=1 -O3 -std=gnu99 -fpic -g -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) $^
+	gcc $(LDFLAGS) -c -DNDEBUG=1 -O3 -flto -std=gnu99 -fpic -g \
+	    -I$(MALLOC_HOOKS) $(filter-out -O%,$(CFLAGS)) $(realpath $<) # HACK to work around oprofile+LTO comp_dir bug
 	ar r "$@" heap_index_hooks.o #malloc_hooks.o
 	#rm -f malloc_hooks.o # HACK
 

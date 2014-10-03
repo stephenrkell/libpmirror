@@ -1,18 +1,17 @@
-include ../Makerules.common
+COMMON_CFLAGS += -I$(SRCROOT)/include
+COMMON_CFLAGS += -I$(MALLOC_HOOKS)
+COMMON_CFLAGS += -std=gnu99 -fpic -g
+CFLAGS += -std=gnu99 -fpic -g #-O0 
 
+CXXFLAGS += -I../include/pmirror
+CXXFLAGS += -I../include
+CXXFLAGS += -std=c++0x
+CXXFLAGS += -fPIC -fno-eliminate-unused-debug-types -fno-eliminate-unused-debug-symbols
+
+LDFLAGS += -L$(SRCROOT)/src -Wl,-R$(SRCROOT)/src -L$(SRCROOT)/lib -Wl,-R$(SRCROOT)/lib
+
+# get the architecture, with override for this stupid i386/i686 confusion
 CXXFLAGS += -g
-
-LDLIBS  += -lpmirror
-LDLIBS  += -ldwarfpp
-LDLIBS  += -lc++fileno 
-LDLIBS  += -lsrk31c++
-LDLIBS  += -ldwarf 
-LDLIBS  += -lelf -lsupc++ -lboost_regex
-LDLIBS  += -lboost_serialization
-LDLIBS  += -lunwind -lunwind-ptrace -lunwind-$(UNWIND_ARCH)
-LDLIBS  += -ldl
-LDLIBS  += -lrtti
-LDLIBS  += -lreflect
 
 SRC := $(wildcard *.cpp)
 ALL_TESTS := $(patsubst %.cpp,%,$(SRC))

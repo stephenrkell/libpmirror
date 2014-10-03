@@ -30,7 +30,7 @@ int unw_init_local(unw_cursor_t *cursor, unw_context_t *context)
 	return 0;
 }
 
-int unw_getcontext(unw_context_t *ucp)
+int __attribute__((noinline)) unw_getcontext(unw_context_t *ucp)
 {
 	/* The initial state of the cursor should be such that 
 	 * if the caller does 
@@ -85,11 +85,10 @@ int unw_getcontext(unw_context_t *ucp)
 
 int unw_step(unw_cursor_t *cp)
 {
-	/*
-       On successful completion, unw_step() returns a positive  value  if  the
-       updated  cursor  refers  to  a  valid stack frame, or 0 if the previous
-       stack frame was the last frame in the chain.  On  error,  the  negative
-       value of one of the error-codes below is returned.
+	/* On successful completion, unw_step() returns a positive value if the
+	   updated cursor refers to a valid stack frame, or 0 if the previous
+	   stack frame was the last frame in the chain. On error, the negative
+	   value of one of the error-codes below is returned.
 	*/
 	
 	unw_context_t ctxt = *cp;
