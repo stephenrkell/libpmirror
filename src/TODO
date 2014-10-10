@@ -1,40 +1,45 @@
-Things to make fast in libprocessimage:
+Design for pmirror using liballocs:
+what is in liballocs?
 
-static object discovery (address -> name mapping)
-- use a clever data structure for overlapping rangesets?
-- identify object by a simple LUT? assume objects are at least 4kb in size
-=> require 1M entries for a 4GB address space
-=> "mapped only" optimisation: still might require essentially this much
-=> linear-page-table-like trick: mmap a 4MB region, will be lazily allocated
-- still have to worry about the in-dieset search, so perhaps
-... just find a quick-ish solution to the rangesets problem
---- perhaps a tree with high branching factor--- feed it hex digits from the queried address?
---- or: each level in the tree is one partition of the address space?
---- i.e.
----                                    [ toplevel ]
----  ---  ---' ---/ --/ -/ / / / / / / / | | | | | \ \ \ \ \ \ \--
---- [cu]  [cu] [cu] ...
---- but degrades to binary search within each tree level 
---- thousands of compilation units seems like the biggest realistic, however
+hooks    (malloc, dlopen, ...)
+some snapshotted stuff (end_addr, ...)
+uniqtypes
+l0index
+l1index + deep indexing
 
-name-address mapping: not officially the job of libprocessimage, BUT
-- might want to cache addresses calculated in the construction of the above tree
-- use the factory approach: client passes a factory whose CU (etc.) impls cache their addresses
-- can we guarantee that these won't be destroyed/recreated through smart pointers?
-- perhaps if we do the caching in the dieset
-- it remains, implicitly, the client programmer's job to ensure that 
-... not so much caching is done that the benefits of smart_ptr reclamation are lost
+Do we want to assume that this has been preloaded into the target process?
+Probably not. We could get that by breakpointing malloc etc..
 
-stack object discovery
-- use fast unwinding patch
+We could opportunistically use whatever in-process state there is.
+But perhaps we should view that as an optimisation.
+Doesn't that mean a big if (liballocs_preloaded) { ... } 
 
-heap object discovery
-- making this fast is FUTURE WORK -- can discount heap allocation costs for now
-- use alloc-site heap metadata (suffices for discover(alloc'd-address))
-- create introspection-enabled allocator (necessary for other cases)
-- prototype: use linear programming for alloc-site-to-DWARF mapping (fast enough)
-- production: use binary analysis for alloc-site-to-DWARF mapping (even faster)
+The interesting thing about pmirror is an API 
+that can be implemented in-process or out-of-process.
 
+- libpreflect -- a liballocs implementation
+- libpinspect -- a remote implementation
+
+What's in this API?
+
+- symbols
+- data types
+- process statics: 
+     - stack walking (just use libunwind)
+     - query for the data type (a version of get_alloc_info)
+- process dynamics: hook events (breakpoints, ...)
+
+- ALSO: "views" / "levels of abstraction" idea:
+       filtering (of symbols? objects / stack frames? fields/vars? control edges?)
+       transformation of the same?
+       
+       -- can bootstrap using latent notions of interface vs implementation
+          in metadata?
+          e.g. field visibility private/protected/public,
+          e.g. symbol visibility/binding
+          e.g. opaqueness/non-opaqueness of structs outside of a single dyn.object
+          e.g. calledness of a function from *outside* a dyn obj
+                   vs called-only-within
 
 Features to add to libprocessimage:
 
